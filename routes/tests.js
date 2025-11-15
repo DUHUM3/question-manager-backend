@@ -1,15 +1,26 @@
 const express = require('express');
 const Test = require('../models/Test');
 const Question = require('../models/Question');
-const Class = require('../models/Class');
+const { Class } = require('../models/Class');
 const { auth, adminAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
+
+// - Test Management API
+//   ├── 🟢 Create Test (POST)
+//   ├── 📝 Add Questions (POST)
+//   ├── 📋 Get Admin Tests (GET)
+//   ├── 🔍 Get Specific Test (GET)
+//   ├── ⚙️ Update Test Status (PATCH)
+//   ├── 🔧 Update Test Settings (PATCH)
+//   └── 🚫 Error Scenarios
+
+// إنشاء اختبار جديد (الإدارة فقط)
 // إنشاء اختبار جديد (الإدارة فقط)
 router.post('/', auth, adminAuth, async (req, res) => {
   try {
-    const { title, description, classId, levels } = req.body;
+    const { title, description, classId, levels, heartsPerAttempt, hintsPerAttempt, isPublic } = req.body;
 
     // التحقق من الحقول المطلوبة
     if (!title || !classId || !levels || !Array.isArray(levels)) {
@@ -40,7 +51,10 @@ router.post('/', auth, adminAuth, async (req, res) => {
       classId,
       adminId: req.user.id,
       levels,
-      totalLevels
+      totalLevels,
+      heartsPerAttempt: heartsPerAttempt || 6,
+      hintsPerAttempt: hintsPerAttempt || 4,
+      isPublic: isPublic !== undefined ? isPublic : false // افتراضي غير مفتوح للجميع
     });
 
     await test.save();
@@ -54,6 +68,9 @@ router.post('/', auth, adminAuth, async (req, res) => {
         class: classObj.name,
         levels: test.levels,
         totalLevels: test.totalLevels,
+        heartsPerAttempt: test.heartsPerAttempt,
+        hintsPerAttempt: test.hintsPerAttempt,
+        isPublic: test.isPublic,
         createdAt: test.createdAt
       }
     });
@@ -62,6 +79,47 @@ router.post('/', auth, adminAuth, async (req, res) => {
   }
 });
 
+// تحديث إعدادات الاختبار including isPublic
+router.patch('/:testId/settings', auth, adminAuth, async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { heartsPerAttempt, hintsPerAttempt, isPublic } = req.body;
+
+    if ((heartsPerAttempt !== undefined && heartsPerAttempt < 1) || 
+        (hintsPerAttempt !== undefined && hintsPerAttempt < 0)) {
+      return res.status(400).json({ 
+        message: 'عدد القلوب يجب أن يكون أكبر من الصفر، وعدد المساعدات يجب أن يكون صفر أو أكبر' 
+      });
+    }
+
+    const updateData = {};
+    if (heartsPerAttempt !== undefined) updateData.heartsPerAttempt = heartsPerAttempt;
+    if (hintsPerAttempt !== undefined) updateData.hintsPerAttempt = hintsPerAttempt;
+    if (isPublic !== undefined) updateData.isPublic = isPublic;
+
+    const test = await Test.findOneAndUpdate(
+      { _id: testId, adminId: req.user.id },
+      updateData,
+      { new: true }
+    ).populate('classId', 'name');
+
+    if (!test) {
+      return res.status(404).json({ message: 'الاختبار غير موجود' });
+    }
+
+    res.json({
+      message: 'تم تحديث إعدادات الاختبار بنجاح',
+      settings: {
+        heartsPerAttempt: test.heartsPerAttempt,
+        hintsPerAttempt: test.hintsPerAttempt,
+        isPublic: test.isPublic,
+        className: test.classId.name
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'خطأ في الخادم', error: error.message });
+  }
+});
 // إضافة أسئلة لمستوى معين في الاختبار
 router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth, async (req, res) => {
   try {
@@ -98,6 +156,15 @@ router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth, async (re
       return res.status(400).json({ 
         message: `عدد الأسئلة المتاحة لهذا المستوى: ${level.numberOfQuestions}` 
       });
+    }
+
+    // التأكد من أن كل سؤال يحتوي على 4 خيارات على الأقل للمساعدات
+    for (const question of questions) {
+      if (!question.options || !Array.isArray(question.options) || question.options.length < 4) {
+        return res.status(400).json({
+          message: 'يجب أن يحتوي كل سؤال على 4 خيارات على الأقل لدعم نظام المساعدات'
+        });
+      }
     }
 
     // إنشاء الأسئلة
@@ -168,6 +235,8 @@ router.get('/:testId', auth, adminAuth, async (req, res) => {
         class: test.classId,
         levels: test.levels,
         totalLevels: test.totalLevels,
+        heartsPerAttempt: test.heartsPerAttempt,
+        hintsPerAttempt: test.hintsPerAttempt,
         isActive: test.isActive,
         createdAt: test.createdAt
       }
@@ -187,7 +256,7 @@ router.get('/class/:classId', auth, adminAuth, async (req, res) => {
       adminId: req.user.id
     })
       .populate('classId', 'name')
-      .select('title description levels totalLevels isActive createdAt')
+      .select('title description levels totalLevels heartsPerAttempt hintsPerAttempt isActive createdAt')
       .sort({ createdAt: -1 });
 
     res.json({
@@ -221,6 +290,45 @@ router.patch('/:testId/status', auth, adminAuth, async (req, res) => {
         id: test._id,
         title: test.title,
         isActive: test.isActive
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'خطأ في الخادم', error: error.message });
+  }
+});
+
+// تحديث إعدادات القلوب والمساعدات
+router.patch('/:testId/settings', auth, adminAuth, async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { heartsPerAttempt, hintsPerAttempt } = req.body;
+
+    if ((heartsPerAttempt !== undefined && heartsPerAttempt < 1) || 
+        (hintsPerAttempt !== undefined && hintsPerAttempt < 0)) {
+      return res.status(400).json({ 
+        message: 'عدد القلوب يجب أن يكون أكبر من الصفر، وعدد المساعدات يجب أن يكون صفر أو أكبر' 
+      });
+    }
+
+    const updateData = {};
+    if (heartsPerAttempt !== undefined) updateData.heartsPerAttempt = heartsPerAttempt;
+    if (hintsPerAttempt !== undefined) updateData.hintsPerAttempt = hintsPerAttempt;
+
+    const test = await Test.findOneAndUpdate(
+      { _id: testId, adminId: req.user.id },
+      updateData,
+      { new: true }
+    );
+
+    if (!test) {
+      return res.status(404).json({ message: 'الاختبار غير موجود' });
+    }
+
+    res.json({
+      message: 'تم تحديث إعدادات الاختبار بنجاح',
+      settings: {
+        heartsPerAttempt: test.heartsPerAttempt,
+        hintsPerAttempt: test.hintsPerAttempt
       }
     });
   } catch (error) {

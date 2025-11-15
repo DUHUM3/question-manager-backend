@@ -38,9 +38,22 @@ const testSchema = new mongoose.Schema({
     type: Number, 
     required: true 
   },
+  heartsPerAttempt: {
+    type: Number,
+    default: 6
+  },
+  hintsPerAttempt: {
+    type: Number,
+    default: 4
+  },
   isActive: { 
     type: Boolean, 
     default: true 
+  },
+  // إضافة حقل لتحديد إذا كان الاختبار مفتوح للجميع
+  isPublic: {
+    type: Boolean,
+    default: false
   }
 }, { 
   timestamps: true 
