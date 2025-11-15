@@ -6,71 +6,128 @@ const { auth } = require('../middleware/auth');
 
 const router = express.Router();
 
-// تعريف الدوال المساعدة بشكل صحيح
-function getPerformanceMessage(rating, percentage) {
-  const messages = {
-    'ممتاز': `أداء رائع! لقد حققت ${percentage}% - استمر في هذا التميز!`,
-    'جيد جداً': `أداء ممتاز! ${percentage}% نتيجة مشرفة، يمكنك التحسين أكثر.`,
-    'جيد': `أداء جيد! ${percentage}% حاول مراجعة الأخطاء للتحسين.`,
-    'بحاجة للتحسين': `حاول مرة أخرى! ${percentage}% راجع الدروس وحاول تحسين نتيجتك.`
-  };
-  return messages[rating] || `نتيجتك: ${percentage}%`;
-}
+// مسار جديد: جلب الاختبارات المتاحة مع جميع الأسئلة والإجابات الصحيحة (بدون توكن)
+router.get('/available-with-questions', async (req, res) => {
+  try {
+    // الحصول على الاختبارات المفعلة والمفتوحة للجميع
+    const tests = await Test.find({
+      isActive: true,
+      isPublic: true
+    })
+    .populate('classId', 'name')
+    .select('title description totalLevels heartsPerAttempt hintsPerAttempt classId levels')
+    .sort({ createdAt: -1 });
 
-function generateRecommendations(statistics, levelPerformance) {
-  const recommendations = [];
-  
-  if (statistics.percentage < 60) {
-    recommendations.push({
-      type: 'critical',
-      message: 'نوصي بإعادة دراسة المواد الأساسية ومحاولة الاختبار مرة أخرى',
-      action: 'إعادة الاختبار'
-    });
-  }
-  
-  if (statistics.hintsUsed > 0) {
-    recommendations.push({
-      type: 'improvement',
-      message: `استخدمت ${statistics.hintsUsed} تلميحاً، حاول الاعتماد على فهمك الخاص أكثر`,
-      action: 'تدريب على حل الأسئلة بدون مساعدات'
-    });
-  }
-  
-  if (statistics.attempts > 1) {
-    recommendations.push({
-      type: 'persistence',
-      message: `محاولاتك المتعددة (${statistics.attempts}) تظهر مثابرتك، استمر!`,
-      action: 'مراجعة الأخطاء السابقة'
-    });
-  }
-  
-  // تحليل المستويات التي تحتاج تحسين
-  const weakLevels = levelPerformance.filter(level => !level.completed);
-  if (weakLevels.length > 0) {
-    recommendations.push({
-      type: 'focus',
-      message: `ركز على تحسين المستويات: ${weakLevels.map(l => l.levelNumber).join(', ')}`,
-      action: 'مراجعة المستويات الضعيفة'
-    });
-  }
-  
-  return recommendations;
-}
+    // جلب جميع الأسئلة لكل اختبار
+    const testsWithQuestions = await Promise.all(
+      tests.map(async (test) => {
+        // جمع جميع أسئلة الاختبار من جميع المستويات
+        const allQuestionIds = [];
+        test.levels.forEach(level => {
+          if (level.questions && level.questions.length > 0) {
+            allQuestionIds.push(...level.questions);
+          }
+        });
 
-function getGrade(percentage) {
-  if (percentage >= 95) return 'امتياز';
-  if (percentage >= 85) return 'ممتاز';
-  if (percentage >= 75) return 'جيد جداً';
-  if (percentage >= 65) return 'جيد';
-  return 'مقبول';
-}
+        // جلب جميع الأسئلة مع الإجابات الصحيحة
+        const questions = await Question.find({
+          _id: { $in: allQuestionIds }
+        }).select('questionText options correctAnswer explanation points level questionType difficulty');
 
-function getRankMessage(rank, total) {
-  if (rank === 1) return '🎉 أنت الأول! أداء متميز!';
-  if (rank <= 3) return `🥈 أنت في المركز ${rank} من ${total}! أداء رائع!`;
-  if (rank <= 10) return `🎯 أنت في المركز ${rank} من ${total}! أداء جيد جداً!`;
-  return `📊 أنت في المركز ${rank} من ${total}. استمر في التحسين!`;
-};
+        // تنظيم الأسئلة حسب المستويات
+        const questionsByLevel = {};
+        test.levels.forEach(level => {
+          questionsByLevel[level.levelNumber] = questions.filter(
+            q => q.level === level.levelNumber
+          );
+        });
+
+        // إحصائيات الاختبار
+        const totalQuestions = questions.length;
+        const totalPoints = questions.reduce((sum, q) => sum + (q.points || 1), 0);
+
+        return {
+          id: test._id,
+          title: test.title,
+          description: test.description,
+          className: test.classId ? test.classId.name : 'عام',
+          totalLevels: test.totalLevels,
+          
+          // معلومات القلوب والتلميحات
+          hearts: {
+            total: test.heartsPerAttempt,
+            remaining: test.heartsPerAttempt
+          },
+          hints: {
+            total: test.hintsPerAttempt,
+            remaining: test.hintsPerAttempt,
+            used: 0
+          },
+          
+          // إحصائيات الاختبار
+          statistics: {
+            totalQuestions: totalQuestions,
+            totalPoints: totalPoints,
+            averagePointsPerQuestion: Math.round((totalPoints / totalQuestions) * 100) / 100
+          },
+          
+          // جميع الأسئلة مرتبة حسب المستويات
+          levels: test.levels.map(level => ({
+            levelNumber: level.levelNumber,
+            levelTitle: level.levelTitle || `المستوى ${level.levelNumber}`,
+            numberOfQuestions: level.numberOfQuestions,
+            questions: questionsByLevel[level.levelNumber] ? questionsByLevel[level.levelNumber].map(q => ({
+              id: q._id,
+              questionText: q.questionText,
+              options: q.options,
+              correctAnswer: q.correctAnswer,
+              explanation: q.explanation,
+              points: q.points || 1,
+              questionType: q.questionType || 'multiple-choice',
+              difficulty: q.difficulty || 'medium',
+              level: q.level
+            })) : []
+          })),
+          
+          // جميع الأسئلة في مصفوفة واحدة (للاستخدام العام)
+          allQuestions: questions.map(q => ({
+            id: q._id,
+            questionText: q.questionText,
+            options: q.options,
+            correctAnswer: q.correctAnswer,
+            explanation: q.explanation,
+            points: q.points || 1,
+            questionType: q.questionType || 'multiple-choice',
+            difficulty: q.difficulty || 'medium',
+            level: q.level
+          })),
+          
+          status: 'متاح',
+          progress: null
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      tests: testsWithQuestions,
+      count: testsWithQuestions.length,
+      totalQuestions: testsWithQuestions.reduce((sum, test) => sum + test.statistics.totalQuestions, 0),
+      message: 'تم جلب الاختبارات مع الأسئلة بنجاح'
+    });
+  } catch (error) {
+    console.error('Error fetching tests with questions:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'خطأ في الخادم', 
+      error: error.message 
+    });
+  }
+});
+
+
+
+
 // الحصول على قائمة الاختبارات المتاحة (للجميع بدون توكن)
 router.get('/available', async (req, res) => {
   try {
@@ -616,5 +673,69 @@ router.get('/results/:testId/detailed', auth, async (req, res) => {
   }
 });
 
+// تعريف الدوال المساعدة بشكل صحيح
+function getPerformanceMessage(rating, percentage) {
+  const messages = {
+    'ممتاز': `أداء رائع! لقد حققت ${percentage}% - استمر في هذا التميز!`,
+    'جيد جداً': `أداء ممتاز! ${percentage}% نتيجة مشرفة، يمكنك التحسين أكثر.`,
+    'جيد': `أداء جيد! ${percentage}% حاول مراجعة الأخطاء للتحسين.`,
+    'بحاجة للتحسين': `حاول مرة أخرى! ${percentage}% راجع الدروس وحاول تحسين نتيجتك.`
+  };
+  return messages[rating] || `نتيجتك: ${percentage}%`;
+}
 
+function generateRecommendations(statistics, levelPerformance) {
+  const recommendations = [];
+  
+  if (statistics.percentage < 60) {
+    recommendations.push({
+      type: 'critical',
+      message: 'نوصي بإعادة دراسة المواد الأساسية ومحاولة الاختبار مرة أخرى',
+      action: 'إعادة الاختبار'
+    });
+  }
+  
+  if (statistics.hintsUsed > 0) {
+    recommendations.push({
+      type: 'improvement',
+      message: `استخدمت ${statistics.hintsUsed} تلميحاً، حاول الاعتماد على فهمك الخاص أكثر`,
+      action: 'تدريب على حل الأسئلة بدون مساعدات'
+    });
+  }
+  
+  if (statistics.attempts > 1) {
+    recommendations.push({
+      type: 'persistence',
+      message: `محاولاتك المتعددة (${statistics.attempts}) تظهر مثابرتك، استمر!`,
+      action: 'مراجعة الأخطاء السابقة'
+    });
+  }
+  
+  // تحليل المستويات التي تحتاج تحسين
+  const weakLevels = levelPerformance.filter(level => !level.completed);
+  if (weakLevels.length > 0) {
+    recommendations.push({
+      type: 'focus',
+      message: `ركز على تحسين المستويات: ${weakLevels.map(l => l.levelNumber).join(', ')}`,
+      action: 'مراجعة المستويات الضعيفة'
+    });
+  }
+  
+  return recommendations;
+}
+
+function getGrade(percentage) {
+  if (percentage >= 95) return 'امتياز';
+  if (percentage >= 85) return 'ممتاز';
+  if (percentage >= 75) return 'جيد جداً';
+  if (percentage >= 65) return 'جيد';
+  return 'مقبول';
+}
+
+function getRankMessage(rank, total) {
+  if (rank === 1) return '🎉 أنت الأول! أداء متميز!';
+  if (rank <= 3) return `🥈 أنت في المركز ${rank} من ${total}! أداء رائع!`;
+  if (rank <= 10) return `🎯 أنت في المركز ${rank} من ${total}! أداء جيد جداً!`;
+  return `📊 أنت في المركز ${rank} من ${total}. استمر في التحسين!`;
+};
 module.exports = router;
