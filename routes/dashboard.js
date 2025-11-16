@@ -3,7 +3,7 @@ const Test = require('../models/Test');
 const Question = require('../models/Question');
 const TestResult = require('../models/TestResult');
 const User = require('../models/User');
-const Class = require('../models/Class');
+const {Class} = require('../models/Class');
 const { auth, adminAuth } = require('../middleware/auth');
 
 const router = express.Router();
