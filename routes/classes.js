@@ -98,14 +98,6 @@ router.get('/admin', auth, adminAuth, async (req, res) => {
     const formattedClasses = classes.map(classObj => ({
       id: classObj._id,
       name: classObj.name,
-      description: classObj.description,
-      studentsCount: classObj.students.length,
-      students: classObj.students.map(student => ({
-        id: student.studentId._id,
-        name: student.studentId.name,
-        email: student.studentId.email,
-        enrolledAt: student.enrolledAt
-      })),
       createdAt: classObj.createdAt
     }));
 
