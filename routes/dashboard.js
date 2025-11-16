@@ -3,216 +3,114 @@ const User = require('../models/User');
 const Test = require('../models/Test');
 const Question = require('../models/Question');
 const { Class } = require('../models/Class');
-const TestResult = require('../models/TestResult');
 const { auth, adminAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-// الحصول على إحصائيات النظام الكاملة (الإدارة فقط)
+// الحصول على إحصائيات النظام الأساسية (الإدارة فقط)
 router.get('/admin/statistics', auth, adminAuth, async (req, res) => {
   try {
-    // إحصائيات المستخدمين
-    const totalUsers = await User.countDocuments({ role: 'user' });
-    const totalAdmins = await User.countDocuments({ role: 'admin' });
-    const recentUsers = await User.countDocuments({ 
-      role: 'user',
-      createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } // آخر 7 أيام
-    });
-
-    // إحصائيات الفصول
-    const totalClasses = await Class.countDocuments({ adminId: req.user.id });
-    const classesWithStats = await Class.aggregate([
-      { $match: { adminId: req.user.id } },
-      {
-        $lookup: {
-          from: 'students',
-          localField: '_id',
-          foreignField: 'classId',
-          as: 'students'
-        }
-      },
-      {
-        $project: {
-          name: 1,
-          studentCount: { $size: '$students' }
-        }
-      }
-    ]);
-
-    // إحصائيات الاختبارات
+    // إحصائيات الاختبارات مع بيانات الصف
     const totalTests = await Test.countDocuments({ adminId: req.user.id });
-    const activeTests = await Test.countDocuments({ 
-      adminId: req.user.id, 
-      isActive: true 
-    });
     const publicTests = await Test.countDocuments({ 
       adminId: req.user.id, 
       isPublic: true 
     });
+    const privateTests = totalTests - publicTests;
+
+    // الحصول على تفاصيل الاختبارات مع بيانات الصف
+    const testsDetails = await Test.find(
+      { adminId: req.user.id }
+    ).populate('classId', 'name');
+
+    // تجميع بيانات المستويات مع اسم الاختبار والصف
+    const levelsData = testsDetails.flatMap(test => {
+      // إذا كان الاختبار يحتوي على مستويات متعددة
+      if (test.levels && test.levels.length > 0) {
+        return test.levels.map(level => ({
+          testTitle: test.title,
+          className: test.classId ? test.classId.name : 'غير محدد',
+          levelNumber: level.levelNumber,
+          heartsPerAttempt: test.heartsPerAttempt,
+          hintsPerAttempt: test.hintsPerAttempt,
+          isPublic: test.isPublic,
+          numberOfQuestions: level.numberOfQuestions,
+          questionsCount: level.questions ? level.questions.length : 0
+        }));
+      } else {
+        // إذا كان الاختبار بدون مستويات محددة
+        return [{
+          testTitle: test.title,
+          className: test.classId ? test.classId.name : 'غير محدد',
+          levelNumber: 1,
+          heartsPerAttempt: test.heartsPerAttempt,
+          hintsPerAttempt: test.hintsPerAttempt,
+          isPublic: test.isPublic,
+          numberOfQuestions: 0,
+          questionsCount: 0
+        }];
+      }
+    });
+
+    // إحصائيات الفصول
+    const classesDetails = await Class.find(
+      { adminId: req.user.id },
+      'name description students'
+    );
+
+    const formattedClasses = classesDetails.map(cls => ({
+      name: cls.name,
+      description: cls.description || 'لا يوجد وصف',
+      studentCount: cls.students ? cls.students.length : 0
+    }));
 
     // إحصائيات الأسئلة
     const totalQuestions = await Question.countDocuments();
-    const questionsByLevel = await Question.aggregate([
-      {
-        $group: {
-          _id: '$level',
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
 
-    // إحصائيات نتائج الاختبارات
-    const testResultsStats = await TestResult.aggregate([
-      {
-        $lookup: {
-          from: 'tests',
-          localField: 'testId',
-          foreignField: '_id',
-          as: 'test'
-        }
-      },
-      { $unwind: '$test' },
-      { $match: { 'test.adminId': req.user.id } },
-      {
-        $group: {
-          _id: null,
-          totalAttempts: { $sum: '$attempts' },
-          totalCompleted: { $sum: { $cond: ['$completed', 1, 0] } },
-          avgScore: { $avg: '$score' },
-          avgMaxScore: { $avg: '$maxScore' },
-          avgPercentage: { 
-            $avg: { 
-              $multiply: [
-                { $divide: ['$score', '$maxScore'] },
-                100
-              ]
-            }
-          }
-        }
-      }
-    ]);
+    // إحصائيات المستخدمين
+    const totalUsers = await User.countDocuments({ role: 'user' });
+    
+    // تجميع المستخدمين يدوياً حسب المدينة
+    const allUsers = await User.find({ role: 'user' }, 'city school class');
+    
+    const cityMap = new Map();
+    const schoolMap = new Map();
+    const classMap = new Map();
 
-    // الاختبارات الأكثر نشاطاً
-    const popularTests = await TestResult.aggregate([
-      {
-        $lookup: {
-          from: 'tests',
-          localField: 'testId',
-          foreignField: '_id',
-          as: 'test'
-        }
-      },
-      { $unwind: '$test' },
-      { $match: { 'test.adminId': req.user.id } },
-      {
-        $group: {
-          _id: '$testId',
-          testTitle: { $first: '$test.title' },
-          attemptCount: { $sum: 1 },
-          completionCount: { $sum: { $cond: ['$completed', 1, 0] } },
-          avgScore: { $avg: '$score' }
-        }
-      },
-      { $sort: { attemptCount: -1 } },
-      { $limit: 5 }
-    ]);
+    allUsers.forEach(user => {
+      // حسب المدينة
+      const city = user.city || 'غير محدد';
+      cityMap.set(city, (cityMap.get(city) || 0) + 1);
 
-    // توزيع المستخدمين حسب المدينة
-    const usersByCity = await User.aggregate([
-      { $match: { role: 'user' } },
-      {
-        $group: {
-          _id: '$city',
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { count: -1 } }
-    ]);
+      // حسب المدرسة
+      const school = user.school || 'غير محدد';
+      schoolMap.set(school, (schoolMap.get(school) || 0) + 1);
 
-    // توزيع المستخدمين حسب الصف
-    const usersByClass = await User.aggregate([
-      { $match: { role: 'user' } },
-      {
-        $group: {
-          _id: '$class',
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { count: -1 } }
-    ]);
+      // حسب الصف
+      const class_ = user.class || 'غير محدد';
+      classMap.set(class_, (classMap.get(class_) || 0) + 1);
+    });
 
-    // إحصائيات الأداء حسب الوقت
-    const weeklyActivity = await TestResult.aggregate([
-      {
-        $lookup: {
-          from: 'tests',
-          localField: 'testId',
-          foreignField: '_id',
-          as: 'test'
-        }
-      },
-      { $unwind: '$test' },
-      { $match: { 'test.adminId': req.user.id } },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$createdAt' },
-            week: { $week: '$createdAt' }
-          },
-          attempts: { $sum: 1 },
-          completions: { $sum: { $cond: ['$completed', 1, 0] } },
-          avgScore: { $avg: '$score' }
-        }
-      },
-      { $sort: { '_id.year': -1, '_id.week': -1 } },
-      { $limit: 8 }
-    ]);
-
-    // تجميع جميع الإحصائيات
+    // تجميع البيانات النهائية
     const statistics = {
-      users: {
-        total: totalUsers,
-        admins: totalAdmins,
-        recent: recentUsers,
-        byCity: usersByCity,
-        byClass: usersByClass
-      },
-      classes: {
-        total: totalClasses,
-        details: classesWithStats,
-        totalStudents: classesWithStats.reduce((sum, cls) => sum + cls.studentCount, 0)
-      },
       tests: {
         total: totalTests,
-        active: activeTests,
         public: publicTests,
-        popular: popularTests
+        private: privateTests,
+        levels: levelsData
+      },
+      classes: {
+        total: formattedClasses.length,
+        details: formattedClasses
       },
       questions: {
-        total: totalQuestions,
-        byLevel: questionsByLevel
+        total: totalQuestions
       },
-      performance: testResultsStats[0] ? {
-        totalAttempts: testResultsStats[0].totalAttempts,
-        totalCompleted: testResultsStats[0].totalCompleted,
-        completionRate: Math.round((testResultsStats[0].totalCompleted / testResultsStats[0].totalAttempts) * 100) || 0,
-        averageScore: Math.round(testResultsStats[0].avgScore * 100) / 100 || 0,
-        averagePercentage: Math.round(testResultsStats[0].avgPercentage * 100) / 100 || 0
-      } : {
-        totalAttempts: 0,
-        totalCompleted: 0,
-        completionRate: 0,
-        averageScore: 0,
-        averagePercentage: 0
-      },
-      activity: {
-        weekly: weeklyActivity
-      },
-      summary: {
-        totalContent: totalTests + totalQuestions,
-        engagementRate: totalUsers > 0 ? Math.round((testResultsStats[0]?.totalAttempts / totalUsers) * 100) / 100 : 0,
-        successRate: testResultsStats[0] ? Math.round(testResultsStats[0].avgPercentage) : 0
+      users: {
+        totalUsers: totalUsers,
+        byCity: Array.from(cityMap, ([city, count]) => ({ city, count })),
+        bySchool: Array.from(schoolMap, ([school, count]) => ({ school, count })),
+        byClass: Array.from(classMap, ([class_, count]) => ({ class: class_, count }))
       }
     };
 
@@ -231,6 +129,7 @@ router.get('/admin/statistics', auth, adminAuth, async (req, res) => {
     });
   }
 });
+
 
 // إحصائيات سريعة للوحة التحكم
 router.get('/admin/dashboard', auth, adminAuth, async (req, res) => {
