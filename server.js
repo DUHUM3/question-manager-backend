@@ -14,7 +14,7 @@ const session = require('express-session');
 app.use(session({
   secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
-  saveUninitialized: false,
+  saveUninitialized: false, 
   cookie: { secure: false } // ضع true إذا كنت تستخدم HTTPS
 }));
 

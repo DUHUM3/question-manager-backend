@@ -336,4 +336,60 @@ router.patch('/:testId/settings', auth, adminAuth, async (req, res) => {
   }
 });
 
+// حذف اختبار وجميع الأسئلة والمستويات المرتبطة به
+router.delete('/:testId', auth, adminAuth, async (req, res) => {
+  try {
+    const { testId } = req.params;
+
+    // البحث عن الاختبار والتأكد من ملكية الأدمن
+    const test = await Test.findOne({ 
+      _id: testId, 
+      adminId: req.user.id 
+    });
+
+    if (!test) {
+      return res.status(404).json({ 
+        message: 'الاختبار غير موجود أو ليس لديك صلاحية الوصول' 
+      });
+    }
+
+    // استخدام transaction لضمان سلامة البيانات
+    const session = await Test.startSession();
+    session.startTransaction();
+
+    try {
+      // 1. حذف جميع الأسئلة المرتبطة بالاختبار
+      await Question.deleteMany({ testId: testId }).session(session);
+
+      // 2. حذف الاختبار نفسه
+      await Test.findByIdAndDelete(testId).session(session);
+
+      // تأكيد العملية
+      await session.commitTransaction();
+      session.endSession();
+
+      res.json({
+        message: 'تم حذف الاختبار وجميع الأسئلة والمستويات المرتبطة به بنجاح',
+        deletedTest: {
+          id: test._id,
+          title: test.title,
+          totalLevels: test.totalLevels
+        }
+      });
+
+    } catch (error) {
+      // التراجع عن العملية في حالة حدوث خطأ
+      await session.abortTransaction();
+      session.endSession();
+      throw error;
+    }
+
+  } catch (error) {
+    res.status(500).json({ 
+      message: 'خطأ في حذف الاختبار', 
+      error: error.message 
+    });
+  }
+});
+  
 module.exports = router;
