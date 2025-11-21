@@ -18,6 +18,8 @@ app.use(session({
   cookie: { secure: false } // ضع true إذا كنت تستخدم HTTPS
 }));
 
+app.use('/uploads', express.static('uploads'));
+
 // routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/classes', require('./routes/classes'));

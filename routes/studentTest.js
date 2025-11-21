@@ -9,18 +9,27 @@ const router = express.Router();
 // مسار جديد: جلب الاختبارات المتاحة مع جميع الأسئلة والإجابات الصحيحة (بدون توكن)
 router.get('/available-with-questions', async (req, res) => {
   try {
+    console.log('=== START FETCHING TESTS WITH QUESTIONS ===');
+    
     // الحصول على الاختبارات المفعلة والمفتوحة للجميع
     const tests = await Test.find({
       isActive: true,
       isPublic: true
     })
-    .populate('classId', 'name')
-    .select('title description totalLevels heartsPerAttempt hintsPerAttempt classId levels')
-    .sort({ createdAt: -1 });
+      .populate('classId', 'name')
+      .select('title description totalLevels heartsPerAttempt hintsPerAttempt classId levels')
+      .sort({ createdAt: -1 });
+
+    console.log('Found tests:', tests.length);
+    tests.forEach(test => {
+      console.log(`Test: ${test._id}, Title: ${test.title}`);
+    });
 
     // جلب جميع الأسئلة لكل اختبار
     const testsWithQuestions = await Promise.all(
       tests.map(async (test) => {
+        console.log(`\n=== Processing Test: ${test._id} ===`);
+        
         // جمع جميع أسئلة الاختبار من جميع المستويات
         const allQuestionIds = [];
         test.levels.forEach(level => {
@@ -29,10 +38,29 @@ router.get('/available-with-questions', async (req, res) => {
           }
         });
 
-        // جلب جميع الأسئلة مع الإجابات الصحيحة
+        console.log('Question IDs for this test:', allQuestionIds);
+
+        // جلب جميع الأسئلة مع الإجابات الصحيحة والصور
         const questions = await Question.find({
           _id: { $in: allQuestionIds }
-        }).select('questionText options correctAnswer explanation points level questionType difficulty');
+        });
+
+        console.log('Fetched questions details:');
+        questions.forEach(q => {
+          console.log(`Question: ${q._id}, Type: ${q.questionType}, OptionsImages: ${q.optionsImages ? q.optionsImages.length : 0}`);
+          if (q.optionsImages && q.optionsImages.length > 0) {
+            console.log('  Options Images paths:', q.optionsImages);
+          }
+        });
+
+        // دالة لتحويل المسار إلى رابط URL كامل
+        const getImageUrl = (imagePath) => {
+          if (!imagePath) return null;
+          // تحويل المسار إلى رابط URL
+          const url = `${req.protocol}://${req.get('host')}/${imagePath.replace(/\\/g, '/')}`;
+          console.log('Converted path to URL:', imagePath, '->', url);
+          return url;
+        };
 
         // تنظيم الأسئلة حسب المستويات
         const questionsByLevel = {};
@@ -46,14 +74,13 @@ router.get('/available-with-questions', async (req, res) => {
         const totalQuestions = questions.length;
         const totalPoints = questions.reduce((sum, q) => sum + (q.points || 1), 0);
 
-        return {
+        // بناء النتيجة النهائية
+        const result = {
           id: test._id,
           title: test.title,
           description: test.description,
           className: test.classId ? test.classId.name : 'عام',
           totalLevels: test.totalLevels,
-          
-          // معلومات القلوب والتلميحات
           hearts: {
             total: test.heartsPerAttempt,
             remaining: test.heartsPerAttempt
@@ -63,15 +90,11 @@ router.get('/available-with-questions', async (req, res) => {
             remaining: test.hintsPerAttempt,
             used: 0
           },
-          
-          // إحصائيات الاختبار
           statistics: {
             totalQuestions: totalQuestions,
             totalPoints: totalPoints,
             averagePointsPerQuestion: Math.round((totalPoints / totalQuestions) * 100) / 100
           },
-          
-          // جميع الأسئلة مرتبة حسب المستويات
           levels: test.levels.map(level => ({
             levelNumber: level.levelNumber,
             levelTitle: level.levelTitle || `المستوى ${level.levelNumber}`,
@@ -85,11 +108,12 @@ router.get('/available-with-questions', async (req, res) => {
               points: q.points || 1,
               questionType: q.questionType || 'multiple-choice',
               difficulty: q.difficulty || 'medium',
-              level: q.level
+              level: q.level,
+              questionImage: q.questionImage ? getImageUrl(q.questionImage) : null,
+              optionsImages: q.optionsImages && q.optionsImages.length > 0 ? 
+                q.optionsImages.map(img => getImageUrl(img)) : []
             })) : []
           })),
-          
-          // جميع الأسئلة في مصفوفة واحدة (للاستخدام العام)
           allQuestions: questions.map(q => ({
             id: q._id,
             questionText: q.questionText,
@@ -99,28 +123,41 @@ router.get('/available-with-questions', async (req, res) => {
             points: q.points || 1,
             questionType: q.questionType || 'multiple-choice',
             difficulty: q.difficulty || 'medium',
-            level: q.level
+            level: q.level,
+            questionImage: q.questionImage ? getImageUrl(q.questionImage) : null,
+            optionsImages: q.optionsImages && q.optionsImages.length > 0 ? 
+              q.optionsImages.map(img => getImageUrl(img)) : []
           })),
-          
           status: 'متاح',
           progress: null
         };
+
+        console.log('Final questions with images:');
+        result.allQuestions.forEach(q => {
+          if (q.optionsImages && q.optionsImages.length > 0) {
+            console.log(`Question ${q.id} has optionsImages:`, q.optionsImages);
+          }
+        });
+
+        return result;
       })
     );
 
+    console.log('=== FINAL RESPONSE ===');
     res.json({
       success: true,
       tests: testsWithQuestions,
       count: testsWithQuestions.length,
       totalQuestions: testsWithQuestions.reduce((sum, test) => sum + test.statistics.totalQuestions, 0),
-      message: 'تم جلب الاختبارات مع الأسئلة بنجاح'
+      message: 'تم جلب الاختبارات مع الأسئلة والصور بنجاح'
     });
+
   } catch (error) {
     console.error('Error fetching tests with questions:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'خطأ في الخادم', 
-      error: error.message 
+      message: 'خطأ في الخادم',
+      error: error.message
     });
   }
 });
@@ -136,14 +173,14 @@ router.get('/available', async (req, res) => {
       isActive: true,
       isPublic: true // فقط الاختبارات المفتوحة للجميع
     })
-    .populate('classId', 'name')
-    .select('title description totalLevels heartsPerAttempt hintsPerAttempt classId')
-    .sort({ createdAt: -1 });
-    
+      .populate('classId', 'name')
+      .select('title description totalLevels heartsPerAttempt hintsPerAttempt classId')
+      .sort({ createdAt: -1 });
+
     // إذا كان هناك توكن، نجلب نتائج الطالب
     let testResults = [];
     let userHeartsData = {};
-    
+
     if (req.headers.authorization) {
       try {
         const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -152,13 +189,13 @@ router.get('/available', async (req, res) => {
           const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
           const User = require('../models/User');
           const user = await User.findById(decoded.userId);
-          
+
           if (user) {
             testResults = await TestResult.find({
               userId: user._id,
               testId: { $in: tests.map(test => test._id) }
             });
-            
+
             // إنشاء بيانات القلوب لكل اختبار
             testResults.forEach(result => {
               userHeartsData[result.testId.toString()] = {
@@ -172,15 +209,15 @@ router.get('/available', async (req, res) => {
         // تجاهل خطأ التوكن، نستمر بدون نتائج المستخدم
       }
     }
-    
+
     // دمج المعلومات
     const testsWithStatus = tests.map(test => {
       const result = testResults.find(
         result => result.testId.toString() === test._id.toString()
       );
-      
+
       const userHearts = userHeartsData[test._id.toString()];
-      
+
       return {
         id: test._id,
         title: test.title,
@@ -209,7 +246,7 @@ router.get('/available', async (req, res) => {
         } : null
       };
     });
-    
+
     res.json({
       tests: testsWithStatus,
       count: testsWithStatus.length
@@ -223,45 +260,45 @@ router.get('/available', async (req, res) => {
 router.post('/start/:testId', auth, async (req, res) => {
   try {
     const { testId } = req.params;
-    
+
     // الحصول على الاختبار
-    const test = await Test.findOne({ 
-      _id: testId, 
+    const test = await Test.findOne({
+      _id: testId,
       isActive: true,
       isPublic: true // التأكد من أن الاختبار مفتوح للجميع
     });
-    
+
     if (!test) {
       return res.status(404).json({ message: 'الاختبار غير موجود أو غير مفعل' });
     }
-    
+
     // البحث عن نتيجة اختبار سابقة أو إنشاء واحدة جديدة
     let testResult = await TestResult.findOne({
       userId: req.user.id,
       testId: test._id
     });
-    
+
     if (!testResult) {
       // حساب إجمالي عدد الأسئلة والنقاط المحتملة
       let totalQuestions = 0;
       let maxScore = 0;
-      
+
       for (const level of test.levels) {
         totalQuestions += level.numberOfQuestions;
-        
+
         // جمع نقاط كل سؤال إذا كانت متوفرة
         if (level.questions && level.questions.length > 0) {
           const questions = await Question.find({
             _id: { $in: level.questions }
           });
-          
+
           maxScore += questions.reduce((sum, q) => sum + (q.points || 1), 0);
         } else {
           // إذا لم تكن الأسئلة متوفرة، نفترض أن كل سؤال بنقطة واحدة
           maxScore += level.numberOfQuestions;
         }
       }
-      
+
       // إنشاء نتيجة جديدة
       testResult = new TestResult({
         userId: req.user.id,
@@ -270,31 +307,31 @@ router.post('/start/:testId', auth, async (req, res) => {
         maxScore,
         className: test.classId ? test.classId.name : 'عام' // حفظ اسم الفصل
       });
-      
+
       await testResult.save();
     }
-    
+
     // الحصول على مستوى الطالب الحالي
     const currentLevel = test.levels.find(
       level => level.levelNumber === testResult.currentLevel
     );
-    
+
     if (!currentLevel) {
       return res.status(404).json({ message: 'مستوى الاختبار غير موجود' });
     }
-    
+
     // الحصول على أسئلة المستوى الحالي
     const questions = await Question.find({
       _id: { $in: currentLevel.questions }
     }).select('questionText options _id');
-    
+
     // إخفاء الإجابة الصحيحة
     const questionsForStudent = questions.map(q => ({
       id: q._id,
       questionText: q.questionText,
       options: q.options
     }));
-    
+
     res.json({
       message: 'تم بدء الاختبار بنجاح',
       testInfo: {
@@ -317,54 +354,54 @@ router.post('/start/:testId', auth, async (req, res) => {
 router.post('/hint/:testId/:questionId', auth, async (req, res) => {
   try {
     const { testId, questionId } = req.params;
-    
+
     // الحصول على الاختبار
     const test = await Test.findOne({ _id: testId, isActive: true });
-    
+
     if (!test) {
       return res.status(404).json({ message: 'الاختبار غير موجود أو غير مفعل' });
     }
-    
+
     // الحصول على نتيجة الاختبار الحالية للطالب
     const testResult = await TestResult.findOne({
       userId: req.user.id,
       testId: test._id
     });
-    
+
     if (!testResult) {
       return res.status(404).json({ message: 'يجب بدء الاختبار أولاً' });
     }
-    
+
     // التحقق من عدد التلميحات المتاحة
     if (testResult.hintsUsed >= test.hintsPerAttempt) {
       return res.status(400).json({ message: 'لقد استنفدت جميع التلميحات المتاحة' });
     }
-    
+
     // الحصول على السؤال
     const question = await Question.findById(questionId);
-    
+
     if (!question) {
       return res.status(404).json({ message: 'السؤال غير موجود' });
     }
-    
+
     // التحقق من أن السؤال ينتمي للاختبار وللمستوى الحالي
-    if (question.testId.toString() !== testId || 
-        question.level !== testResult.currentLevel) {
+    if (question.testId.toString() !== testId ||
+      question.level !== testResult.currentLevel) {
       return res.status(403).json({ message: 'ليس لديك صلاحية الوصول لهذا السؤال' });
     }
-    
+
     // الحصول على الإجابة الصحيحة والخيارات الخاطئة
     const correctAnswer = question.correctAnswer;
     const incorrectOptions = question.options.filter(option => option !== correctAnswer);
-    
+
     // اختيار خيارين خاطئين لإزالتهما بشكل عشوائي
     const shuffledIncorrectOptions = incorrectOptions.sort(() => 0.5 - Math.random());
     const optionsToRemove = shuffledIncorrectOptions.slice(0, 2);
-    
+
     // تحديث عدد التلميحات المستخدمة
     testResult.hintsUsed += 1;
     await testResult.save();
-    
+
     res.json({
       message: 'تم استخدام التلميح بنجاح',
       optionsToRemove,
@@ -380,61 +417,61 @@ router.post('/answer/:testId/:questionId', auth, async (req, res) => {
   try {
     const { testId, questionId } = req.params;
     const { answer } = req.body;
-    
+
     if (!answer) {
       return res.status(400).json({ message: 'الإجابة مطلوبة' });
     }
-    
+
     // الحصول على الاختبار
     const test = await Test.findOne({ _id: testId, isActive: true });
-    
+
     if (!test) {
       return res.status(404).json({ message: 'الاختبار غير موجود أو غير مفعل' });
     }
-    
+
     // الحصول على نتيجة الاختبار الحالية للطالب
     const testResult = await TestResult.findOne({
       userId: req.user.id,
       testId: test._id
     });
-    
+
     if (!testResult) {
       return res.status(404).json({ message: 'يجب بدء الاختبار أولاً' });
     }
-    
+
     // الحصول على السؤال
     const question = await Question.findById(questionId);
-    
+
     if (!question) {
       return res.status(404).json({ message: 'السؤال غير موجود' });
     }
-    
+
     // التحقق من أن السؤال ينتمي للاختبار وللمستوى الحالي
-    if (question.testId.toString() !== testId || 
-        question.level !== testResult.currentLevel) {
+    if (question.testId.toString() !== testId ||
+      question.level !== testResult.currentLevel) {
       return res.status(403).json({ message: 'ليس لديك صلاحية الوصول لهذا السؤال' });
     }
-    
+
     // التحقق من صحة الإجابة
     const isCorrect = answer === question.correctAnswer;
-    
+
     // نموذج للاستجابة
     const response = {
       isCorrect,
       correctAnswer: question.correctAnswer,
       explanation: question.explanation
     };
-    
+
     // تحديث النتيجة فقط إذا كانت الإجابة صحيحة
     if (isCorrect) {
       testResult.score += question.points || 1;
       testResult.correctAnswers += 1;
-      
+
       // التحقق مما إذا كان هذا هو آخر سؤال في المستوى
       const currentLevel = test.levels.find(
         level => level.levelNumber === testResult.currentLevel
       );
-      
+
       if (testResult.correctAnswers >= currentLevel.numberOfQuestions) {
         // انتقل للمستوى التالي
         if (testResult.currentLevel < test.totalLevels) {
@@ -445,9 +482,9 @@ router.post('/answer/:testId/:questionId', auth, async (req, res) => {
           testResult.completed = true;
         }
       }
-      
+
       await testResult.save();
-      
+
       // تحديث استجابة إضافية للمستوى/الاختبار المكتمل
       if (testResult.completed) {
         response.message = 'تهانينا! لقد أكملت الاختبار بنجاح';
@@ -466,26 +503,26 @@ router.post('/answer/:testId/:questionId', auth, async (req, res) => {
       // إذا كانت الإجابة خاطئة، قم بخصم قلب
       const hearts = req.session.hearts || test.heartsPerAttempt;
       const remainingHearts = hearts - 1;
-      
+
       // تخزين القلوب المتبقية في الجلسة
       req.session.hearts = remainingHearts;
-      
+
       response.heartsRemaining = remainingHearts;
-      
+
       if (remainingHearts <= 0) {
         response.message = 'انتهت المحاولة! لقد نفذت قلوبك';
         response.attemptFailed = true;
-        
+
         // إعادة ضبط الجلسة لمحاولة جديدة
         req.session.hearts = test.heartsPerAttempt;
-        
+
         // تحديث عدد المحاولات في قاعدة البيانات
         testResult.attempts += 1;
         testResult.lastAttemptDate = new Date();
         await testResult.save();
       }
     }
-    
+
     res.json(response);
   } catch (error) {
     res.status(500).json({ message: 'خطأ في الخادم', error: error.message });
@@ -505,7 +542,7 @@ router.get('/results', auth, async (req, res) => {
         }
       })
       .sort({ updatedAt: -1 });
-    
+
     const formattedResults = results.map(result => ({
       id: result._id,
       testTitle: result.testId.title,
@@ -519,7 +556,7 @@ router.get('/results', auth, async (req, res) => {
       attempts: result.attempts,
       lastAttemptDate: result.lastAttemptDate
     }));
-    
+
     res.json({
       results: formattedResults,
       count: formattedResults.length
@@ -594,7 +631,7 @@ router.get('/results/:testId/detailed', auth, async (req, res) => {
     const levelPerformance = test.levels.map(level => {
       const levelQuestions = allQuestions.filter(q => q.levelNumber === level.levelNumber);
       const levelMaxScore = levelQuestions.reduce((sum, q) => sum + (q.points || 1), 0);
-      
+
       return {
         levelNumber: level.levelNumber,
         totalQuestions: level.numberOfQuestions,
@@ -606,7 +643,7 @@ router.get('/results/:testId/detailed', auth, async (req, res) => {
     // تقييم الأداء
     let performanceRating = '';
     let performanceColor = '';
-    
+
     if (statistics.percentage >= 90) {
       performanceRating = 'ممتاز';
       performanceColor = 'success';
@@ -686,7 +723,7 @@ function getPerformanceMessage(rating, percentage) {
 
 function generateRecommendations(statistics, levelPerformance) {
   const recommendations = [];
-  
+
   if (statistics.percentage < 60) {
     recommendations.push({
       type: 'critical',
@@ -694,7 +731,7 @@ function generateRecommendations(statistics, levelPerformance) {
       action: 'إعادة الاختبار'
     });
   }
-  
+
   if (statistics.hintsUsed > 0) {
     recommendations.push({
       type: 'improvement',
@@ -702,7 +739,7 @@ function generateRecommendations(statistics, levelPerformance) {
       action: 'تدريب على حل الأسئلة بدون مساعدات'
     });
   }
-  
+
   if (statistics.attempts > 1) {
     recommendations.push({
       type: 'persistence',
@@ -710,7 +747,7 @@ function generateRecommendations(statistics, levelPerformance) {
       action: 'مراجعة الأخطاء السابقة'
     });
   }
-  
+
   // تحليل المستويات التي تحتاج تحسين
   const weakLevels = levelPerformance.filter(level => !level.completed);
   if (weakLevels.length > 0) {
@@ -720,7 +757,7 @@ function generateRecommendations(statistics, levelPerformance) {
       action: 'مراجعة المستويات الضعيفة'
     });
   }
-  
+
   return recommendations;
 }
 

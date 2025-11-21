@@ -25,7 +25,20 @@ const questionSchema = new mongoose.Schema({
   points: { 
     type: Number, 
     default: 1 
-  }
+  },
+  explanation: {
+    type: String,
+    default: ''
+  },
+  // الحقول الجديدة
+  questionType: {
+    type: String,
+    enum: ['text-only', 'image-options'],
+    default: 'text-only'
+  },
+  optionsImages: [{
+    type: String // مسارات صور الخيارات
+  }]
 }, { 
   timestamps: true 
 });

@@ -3,6 +3,7 @@ const Test = require('../models/Test');
 const Question = require('../models/Question');
 const { Class } = require('../models/Class');
 const { auth, adminAuth } = require('../middleware/auth');
+const { uploadAnyImages } = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -120,17 +121,39 @@ router.patch('/:testId/settings', auth, adminAuth, async (req, res) => {
     res.status(500).json({ message: 'خطأ في الخادم', error: error.message });
   }
 });
+
 // إضافة أسئلة لمستوى معين في الاختبار
-router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth, async (req, res) => {
+router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth, uploadAnyImages, async (req, res) => {
   try {
     const { testId, levelNumber } = req.params;
     const { questions } = req.body;
 
-    if (!questions || !Array.isArray(questions)) {
-      return res.status(400).json({ message: 'الأسئلة مطلوبة' });
+    if (!questions) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'الأسئلة مطلوبة' 
+      });
     }
 
-    // البحث عن الاختبار والتأكد من ملكية الأدمن
+    // تحليل الأسئلة من JSON
+    let questionsData;
+    try {
+      questionsData = typeof questions === 'string' ? JSON.parse(questions) : questions;
+    } catch (parseError) {
+      return res.status(400).json({
+        success: false,
+        message: 'تنسيق الأسئلة غير صحيح'
+      });
+    }
+
+    if (!Array.isArray(questionsData)) {
+      return res.status(400).json({
+        success: false,
+        message: 'يجب أن تكون الأسئلة مصفوفة'
+      });
+    }
+
+    // البحث عن الاختبار
     const test = await Test.findOne({ 
       _id: testId, 
       adminId: req.user.id 
@@ -138,41 +161,88 @@ router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth, async (re
 
     if (!test) {
       return res.status(404).json({ 
+        success: false,
         message: 'الاختبار غير موجود أو ليس لديك صلاحية الوصول' 
       });
     }
 
-    // البحث عن المستوى المطلوب
-    const level = test.levels.find(
-      l => l.levelNumber === parseInt(levelNumber)
-    );
-
+    const level = test.levels.find(l => l.levelNumber === parseInt(levelNumber));
     if (!level) {
-      return res.status(404).json({ message: 'المستوى غير موجود' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'المستوى غير موجود' 
+      });
     }
 
     // التحقق من عدد الأسئلة
-    if (questions.length > level.numberOfQuestions) {
+    if (questionsData.length > level.numberOfQuestions) {
       return res.status(400).json({ 
+        success: false,
         message: `عدد الأسئلة المتاحة لهذا المستوى: ${level.numberOfQuestions}` 
       });
     }
 
-    // التأكد من أن كل سؤال يحتوي على 4 خيارات على الأقل للمساعدات
-    for (const question of questions) {
+    // التحقق من صحة الأسئلة
+    for (const question of questionsData) {
       if (!question.options || !Array.isArray(question.options) || question.options.length < 4) {
         return res.status(400).json({
-          message: 'يجب أن يحتوي كل سؤال على 4 خيارات على الأقل لدعم نظام المساعدات'
+          success: false,
+          message: 'يجب أن يحتوي كل سؤال على 4 خيارات على الأقل'
+        });
+      }
+
+      if (!question.options.includes(question.correctAnswer)) {
+        return res.status(400).json({
+          success: false,
+          message: `الإجابة الصحيحة "${question.correctAnswer}" غير موجودة في الخيارات`
         });
       }
     }
 
-    // إنشاء الأسئلة
+    // معالجة الأسئلة والصور
+    const uploadedFiles = req.files || [];
+    let fileIndex = 0;
+    const questionsToCreate = [];
+
+    for (const question of questionsData) {
+      const questionData = { ...question };
+      
+      if (question.questionType === 'image-options') {
+        // نتحقق من وجود 4 صور للسؤال
+        const remainingFiles = uploadedFiles.length - fileIndex;
+        if (remainingFiles < 4) {
+          return res.status(400).json({
+            success: false,
+            message: `لا توجد صور كافية. تحتاج 4 صور للسؤال "${question.questionText}"`
+          });
+        }
+
+        // نأخذ 4 صور للسؤال الحالي
+        questionData.optionsImages = [];
+        for (let i = 0; i < 4; i++) {
+          questionData.optionsImages.push(uploadedFiles[fileIndex].path);
+          fileIndex++;
+        }
+      } else {
+        questionData.questionType = 'text-only';
+        questionData.optionsImages = [];
+      }
+
+      questionsToCreate.push(questionData);
+    }
+
+    // إنشاء الأسئلة في قاعدة البيانات
     const createdQuestions = await Question.insertMany(
-      questions.map(question => ({
-        ...question,
+      questionsToCreate.map(question => ({
+        questionText: question.questionText,
+        options: question.options,
+        correctAnswer: question.correctAnswer,
+        explanation: question.explanation || '',
         level: parseInt(levelNumber),
-        testId: test._id
+        testId: test._id,
+        points: question.points || 1,
+        questionType: question.questionType,
+        optionsImages: question.optionsImages
       }))
     );
 
@@ -181,16 +251,25 @@ router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth, async (re
     await test.save();
 
     res.status(201).json({
+      success: true,
       message: `تم إضافة ${createdQuestions.length} سؤال للمستوى ${levelNumber}`,
-      questions: createdQuestions,
-      level: {
-        levelNumber: level.levelNumber,
-        totalQuestions: level.questions.length,
-        maxQuestions: level.numberOfQuestions
+      data: {
+        questions: createdQuestions,
+        level: {
+          levelNumber: level.levelNumber,
+          totalQuestions: level.questions.length,
+          maxQuestions: level.numberOfQuestions
+        }
       }
     });
+
   } catch (error) {
-    res.status(500).json({ message: 'خطأ في الخادم', error: error.message });
+    console.error('Error adding questions:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'خطأ في الخادم', 
+      error: error.message 
+    });
   }
 });
 
