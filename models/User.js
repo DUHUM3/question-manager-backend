@@ -3,13 +3,12 @@ const mongoose = require('mongoose');
 const userSchema = new mongoose.Schema({
   name: { 
     type: String, 
-    required: true 
+    required: true,
+    trim: true
   },
   username: { 
     type: String, 
     required: function() { return this.role === 'user'; },
-    unique: true,
-    sparse: true,
     trim: true,
     lowercase: true,
     minlength: 3,
@@ -18,13 +17,13 @@ const userSchema = new mongoose.Schema({
   email: { 
     type: String, 
     required: function() { return this.role === 'admin'; },
-    unique: true,
-    sparse: true,
-    lowercase: true
+    lowercase: true,
+    trim: true
   },
   password: { 
     type: String, 
-    required: true 
+    required: true,
+    minlength: 6
   },
   role: { 
     type: String, 
@@ -33,22 +32,36 @@ const userSchema = new mongoose.Schema({
   },
   class: { 
     type: String, 
-    required: function() { return this.role === 'user'; } 
+    required: function() { return this.role === 'user'; },
+    trim: true
   },
   school: { 
     type: String, 
-    required: function() { return this.role === 'user'; } 
+    required: function() { return this.role === 'user'; },
+    trim: true
   },
   city: { 
     type: String, 
-    required: function() { return this.role === 'user'; } 
+    required: function() { return this.role === 'user'; },
+    trim: true
   }
 }, { 
   timestamps: true 
 });
 
-// إنشاء فهارس للبحث السريع
-userSchema.index({ username: 1 });
-userSchema.index({ email: 1 });
+// إنشاء الفهارس المخصصة بعد تعريف المخطط
+userSchema.index({ 
+  username: 1 
+}, { 
+  unique: true, 
+  partialFilterExpression: { role: 'user' }
+});
+
+userSchema.index({ 
+  email: 1 
+}, { 
+  unique: true, 
+  partialFilterExpression: { role: 'admin' }
+});
 
 module.exports = mongoose.model('User', userSchema);
