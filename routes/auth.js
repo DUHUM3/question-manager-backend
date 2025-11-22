@@ -6,28 +6,36 @@ const { auth, adminAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-// تسجيل مستخدم جديد
+// تسجيل مستخدم جديد (باستخدام username فقط)
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, class: userClass, school, city } = req.body;
+    const { name, username, password, class: userClass, school, city } = req.body;
 
-    // التحقق من الحقول المطلوبة للمستخدم
-    if (!name || !email || !password || !userClass || !school || !city) {
+    // التحقق من الحقول المطلوبة للمستخدم العادي
+    if (!name || !username || !password || !userClass || !school || !city) {
       return res.status(400).json({ 
-        message: 'جميع الحقول مطلوبة: الاسم، الإيميل، كلمة السر، الصف، المدرسة، المدينة' 
+        message: 'جميع الحقول مطلوبة: الاسم، اسم المستخدم، كلمة السر، الصف، المدرسة، المدينة' 
+      });
+    }
+
+    // التحقق من صحة اسم المستخدم
+    const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+    if (!usernameRegex.test(username)) {
+      return res.status(400).json({ 
+        message: 'اسم المستخدم يجب أن يحتوي على 3-30 حرفاً (أحرف إنجليزية، أرقام و _ فقط)' 
       });
     }
 
     // التحقق من وجود المستخدم مسبقاً
-    let user = await User.findOne({ email });
+    let user = await User.findOne({ username: username.toLowerCase() });
     if (user) {
-      return res.status(400).json({ message: 'المستخدم موجود مسبقاً' });
+      return res.status(400).json({ message: 'اسم المستخدم موجود مسبقاً' });
     }
 
     // إنشاء مستخدم جديد
     user = new User({
       name,
-      email,
+      username: username.toLowerCase(),
       password,
       class: userClass,
       school,
@@ -50,7 +58,7 @@ router.post('/register', async (req, res) => {
       user: {
         id: user.id,
         name: user.name,
-        email: user.email,
+        username: user.username,
         class: user.class,
         school: user.school,
         city: user.city,
@@ -62,7 +70,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// تسجيل دخول الإدارة
+// تسجيل دخول الإدارة (باستخدام الإيميل)
 router.post('/admin/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -73,8 +81,11 @@ router.post('/admin/login', async (req, res) => {
       });
     }
 
-    // البحث عن الأدمن
-    const admin = await User.findOne({ email, role: 'admin' });
+    // البحث عن الأدمن باستخدام الإيميل
+    const admin = await User.findOne({ 
+      email: email.toLowerCase(), 
+      role: 'admin' 
+    });
     if (!admin) {
       return res.status(400).json({ message: 'بيانات الدخول غير صحيحة' });
     }
@@ -103,19 +114,22 @@ router.post('/admin/login', async (req, res) => {
   }
 });
 
-// تسجيل دخول المستخدم
+// تسجيل دخول المستخدم العادي (باستخدام username)
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { username, password } = req.body;
 
-    if (!email || !password) {
+    if (!username || !password) {
       return res.status(400).json({ 
-        message: 'الإيميل وكلمة السر مطلوبان' 
+        message: 'اسم المستخدم وكلمة السر مطلوبان' 
       });
     }
 
-    // البحث عن المستخدم
-    const user = await User.findOne({ email, role: 'user' });
+    // البحث عن المستخدم باستخدام username
+    const user = await User.findOne({ 
+      username: username.toLowerCase(), 
+      role: 'user' 
+    });
     if (!user) {
       return res.status(400).json({ message: 'بيانات الدخول غير صحيحة' });
     }
@@ -135,7 +149,7 @@ router.post('/login', async (req, res) => {
       user: {
         id: user.id,
         name: user.name,
-        email: user.email,
+        username: user.username,
         class: user.class,
         school: user.school,
         city: user.city,
@@ -149,18 +163,26 @@ router.post('/login', async (req, res) => {
 
 // الحصول على بيانات المستخدم الحالي
 router.get('/me', auth, async (req, res) => {
-  res.json({
+  const userData = {
     id: req.user.id,
     name: req.user.name,
-    email: req.user.email,
-    class: req.user.class,
-    school: req.user.school,
-    city: req.user.city,
     role: req.user.role
-  });
+  };
+
+  // إضافة الحقول حسب نوع المستخدم
+  if (req.user.role === 'admin') {
+    userData.email = req.user.email;
+  } else {
+    userData.username = req.user.username;
+    userData.class = req.user.class;
+    userData.school = req.user.school;
+    userData.city = req.user.city;
+  }
+
+  res.json(userData);
 });
 
-// إنشاء حساب أدمن (للتطوير فقط)
+// إنشاء حساب أدمن (باستخدام الإيميل)
 router.post('/create-admin', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -171,14 +193,22 @@ router.post('/create-admin', async (req, res) => {
       });
     }
 
-    let admin = await User.findOne({ email });
+    // التحقق من صحة الإيميل
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        message: 'صيغة الإيميل غير صحيحة' 
+      });
+    }
+
+    let admin = await User.findOne({ email: email.toLowerCase() });
     if (admin) {
       return res.status(400).json({ message: 'الحساب موجود مسبقاً' });
     }
 
     admin = new User({
       name,
-      email,
+      email: email.toLowerCase(),
       password,
       role: 'admin'
     });
@@ -201,6 +231,84 @@ router.post('/create-admin', async (req, res) => {
       }
     });
   } catch (error) {
+    res.status(500).json({ message: 'خطأ في الخادم', error: error.message });
+  }
+});
+
+// تحديث بيانات المستخدم
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const updates = { ...req.body };
+    
+    // منع تغيير role من خلال هذا المسار
+    delete updates.role;
+
+    // معالجة الحقول حسب نوع المستخدم
+    if (req.user.role === 'admin') {
+      // للأدمن: يمكن تحديث الاسم والإيميل فقط
+      const allowedFields = ['name', 'email'];
+      Object.keys(updates).forEach(key => {
+        if (!allowedFields.includes(key)) delete updates[key];
+      });
+
+      if (updates.email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(updates.email)) {
+          return res.status(400).json({ message: 'صيغة الإيميل غير صحيحة' });
+        }
+        updates.email = updates.email.toLowerCase();
+      }
+    } else {
+      // للمستخدم العادي: يمكن تحديث الاسم واسم المستخدم والحقول الأخرى
+      const allowedFields = ['name', 'username', 'class', 'school', 'city'];
+      Object.keys(updates).forEach(key => {
+        if (!allowedFields.includes(key)) delete updates[key];
+      });
+
+      if (updates.username) {
+        const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+        if (!usernameRegex.test(updates.username)) {
+          return res.status(400).json({ 
+            message: 'اسم المستخدم يجب أن يحتوي على 3-30 حرفاً (أحرف إنجليزية، أرقام و _ فقط)' 
+          });
+        }
+        updates.username = updates.username.toLowerCase();
+      }
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      updates,
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: 'المستخدم غير موجود' });
+    }
+
+    // إعداد البيانات للإرجاع
+    const userData = {
+      id: user.id,
+      name: user.name,
+      role: user.role
+    };
+
+    if (user.role === 'admin') {
+      userData.email = user.email;
+    } else {
+      userData.username = user.username;
+      userData.class = user.class;
+      userData.school = user.school;
+      userData.city = user.city;
+    }
+
+    res.json(userData);
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ 
+        message: req.user.role === 'admin' ? 'الإيميل موجود مسبقاً' : 'اسم المستخدم موجود مسبقاً' 
+      });
+    }
     res.status(500).json({ message: 'خطأ في الخادم', error: error.message });
   }
 });
