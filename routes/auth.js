@@ -6,6 +6,56 @@ const { auth, adminAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
+// 🔹 روت التحقق من اسم المستخدم (جديد)
+router.get('/check-username/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+
+    // التحقق من وجود اسم المستخدم
+    if (!username) {
+      return res.status(400).json({ 
+        available: false,
+        message: 'اسم المستخدم مطلوب' 
+      });
+    }
+
+    // التحقق من صحة اسم المستخدم
+    const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+    if (!usernameRegex.test(username)) {
+      return res.status(400).json({ 
+        available: false,
+        message: 'اسم المستخدم يجب أن يحتوي على 3-30 حرفاً (أحرف إنجليزية، أرقام و _ فقط)' 
+      });
+    }
+
+    // البحث عن المستخدم في قاعدة البيانات
+    const existingUser = await User.findOne({ 
+      username: username.toLowerCase(),
+      role: 'user' // التحقق من المستخدمين العاديين فقط
+    });
+
+    if (existingUser) {
+      return res.json({ 
+        available: false,
+        message: 'اسم المستخدم موجود مسبقاً' 
+      });
+    }
+
+    // اسم المستخدم متاح
+    res.json({ 
+      available: true,
+      message: 'اسم المستخدم متاح' 
+    });
+
+  } catch (error) {
+    console.error('Username check error:', error);
+    res.status(500).json({ 
+      available: false,
+      message: 'خطأ في الخادم أثناء التحقق من اسم المستخدم' 
+    });
+  }
+});
+
 // تسجيل مستخدم جديد (باستخدام username فقط)
 router.post('/register', async (req, res) => {
   try {
