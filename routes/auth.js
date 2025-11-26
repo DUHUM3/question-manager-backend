@@ -118,7 +118,7 @@ router.post('/register', async (req, res) => {
 
     // إنشاء token
     const payload = { userId: user.id };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '24h' });
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '336d' });
 
     res.status(201).json({
       token,
@@ -202,7 +202,7 @@ router.post('/create-admin', async (req, res) => {
     await admin.save();
 
     const payload = { userId: admin.id };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '24h' });
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '3d' });
 
     res.status(201).json({
       token,
@@ -255,7 +255,7 @@ router.post('/admin/login', async (req, res) => {
     }
 
     const payload = { userId: admin.id };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '24h' });
+    const token = jwt.sign(payload, process.env.JWT_SECRET,{ expiresIn: '3d' });
 
     res.json({
       token,
@@ -297,7 +297,7 @@ router.post('/login', async (req, res) => {
     }
 
     const payload = { userId: user.id };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '24h' });
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '336d' });
 
     res.json({
       token,
@@ -406,6 +406,91 @@ router.put('/profile', auth, async (req, res) => {
       });
     }
     res.status(500).json({ message: 'خطأ في الخادم', error: error.message });
+  }
+});
+
+
+
+// 🔹 روت حذف الأدمن (يحتاج صلاحية أدمن)
+router.delete('/admin/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // منع المستخدم من حذف نفسه
+    if (req.user.id === id) {
+      return res.status(400).json({ 
+        message: 'لا يمكنك حذف حسابك الخاص' 
+      });
+    }
+
+    // البحث عن الأدمن المراد حذفه
+    const adminToDelete = await User.findOne({ 
+      _id: id, 
+      role: 'admin' 
+    });
+
+    if (!adminToDelete) {
+      return res.status(404).json({ 
+        message: 'الأدمن غير موجود' 
+      });
+    }
+
+    // حذف الأدمن
+    await User.findByIdAndDelete(id);
+
+    res.json({ 
+      message: 'تم حذف الأدمن بنجاح',
+      deletedAdmin: {
+        id: adminToDelete._id,
+        name: adminToDelete.name,
+        email: adminToDelete.email
+      }
+    });
+
+  } catch (error) {
+    console.error('Delete admin error:', error);
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({ 
+        message: 'معرف الأدمن غير صحيح' 
+      });
+    }
+    
+    res.status(500).json({ 
+      message: 'خطأ في الخادم أثناء حذف الأدمن', 
+      error: error.message 
+    });
+  }
+});
+// 🔹 روت واحد لجلب جميع الأدمن (يحتاج صلاحية أدمن)
+router.get('/admins', async (req, res) => {
+  try {
+    // جلب جميع المستخدمين بدور "admin" مع استبعاد كلمة السر
+    const admins = await User.find(
+      { role: 'admin' },
+      { password: 0 } // استبعاد حقل كلمة السر من النتائج
+    ).sort({ createdAt: -1 }); // ترتيب تنازلي حسب تاريخ الإنشاء
+
+    res.json({
+      success: true,
+      count: admins.length,
+      admins: admins.map(admin => ({
+        id: admin._id,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role,
+        createdAt: admin.createdAt,
+        updatedAt: admin.updatedAt
+      }))
+    });
+
+  } catch (error) {
+    console.error('Get admins error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'خطأ في الخادم أثناء جلب قائمة الأدمن', 
+      error: error.message 
+    });
   }
 });
 
