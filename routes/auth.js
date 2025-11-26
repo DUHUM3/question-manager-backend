@@ -5,6 +5,38 @@ const User = require('../models/User');
 const { auth, adminAuth } = require('../middleware/auth');
 
 const router = express.Router();
+// 🔹 روت حذف الأدمن (يحتاج صلاحية أدمن)
+// 🔹 روت حذف الأدمن بدون أي حماية وبدون استخدام req.user
+router.delete('/admin/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // جلب الأدمن
+    const adminToDelete = await User.findOne({ _id: id, role: 'admin' });
+
+    if (!adminToDelete) {
+      return res.status(404).json({ message: 'الأدمن غير موجود' });
+    }
+
+    // حذف الأدمن
+    await User.findByIdAndDelete(id);
+
+    res.json({
+      message: 'تم حذف الأدمن بنجاح',
+      deletedAdmin: {
+        id: adminToDelete._id,
+        name: adminToDelete.name,
+        email: adminToDelete.email
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({ 
+      message: 'خطأ في الخادم أثناء حذف الأدمن', 
+      error: error.message 
+    });
+  }
+});
 
 // 🔹 روت التحقق من اسم المستخدم
 router.get('/check-username/:username', async (req, res) => {
@@ -411,57 +443,7 @@ router.put('/profile', auth, async (req, res) => {
 
 
 
-// 🔹 روت حذف الأدمن (يحتاج صلاحية أدمن)
-router.delete('/admin/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
 
-    // منع المستخدم من حذف نفسه
-    if (req.user.id === id) {
-      return res.status(400).json({ 
-        message: 'لا يمكنك حذف حسابك الخاص' 
-      });
-    }
-
-    // البحث عن الأدمن المراد حذفه
-    const adminToDelete = await User.findOne({ 
-      _id: id, 
-      role: 'admin' 
-    });
-
-    if (!adminToDelete) {
-      return res.status(404).json({ 
-        message: 'الأدمن غير موجود' 
-      });
-    }
-
-    // حذف الأدمن
-    await User.findByIdAndDelete(id);
-
-    res.json({ 
-      message: 'تم حذف الأدمن بنجاح',
-      deletedAdmin: {
-        id: adminToDelete._id,
-        name: adminToDelete.name,
-        email: adminToDelete.email
-      }
-    });
-
-  } catch (error) {
-    console.error('Delete admin error:', error);
-    
-    if (error.name === 'CastError') {
-      return res.status(400).json({ 
-        message: 'معرف الأدمن غير صحيح' 
-      });
-    }
-    
-    res.status(500).json({ 
-      message: 'خطأ في الخادم أثناء حذف الأدمن', 
-      error: error.message 
-    });
-  }
-});
 // 🔹 روت واحد لجلب جميع الأدمن (يحتاج صلاحية أدمن)
 router.get('/admins', async (req, res) => {
   try {
