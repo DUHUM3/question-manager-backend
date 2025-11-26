@@ -29,7 +29,7 @@ app.use('/api/admin/reports', require('./routes/adminReports'));
 app.use('/api/dashboard', require ('./routes/dashboard'));
 app.use('/api/rating', require ('./routes/ratings') );
 app.use('/api/result',require('./routes/testResults'));
-
+app.use('/api/statis',require('./routes/statistics'));
 // route أساسي للتحقق
 app.get('/', (req, res) => {
   res.json({ message: 'نظام إدارة الاختبارات - واجهة برمجة التطبيقات' });

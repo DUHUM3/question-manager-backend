@@ -11,11 +11,11 @@ const ratingSchema = new mongoose.Schema({
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    // required: true
   },
   username: {
     type: String,
-    required: true
+    // required: true
   },
   isVisible: {
     type: Boolean,

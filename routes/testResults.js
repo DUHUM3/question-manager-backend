@@ -70,7 +70,7 @@ router.post('/', auth, async (req, res) => {
     console.error('Error saving test result:', error);
     res.status(500).json({
       success: false,
-      message: 'حدث خطأ في حفظ النتيجة',
+      message:' تم حفظ النتيجة مسبقاء',
       error: error.message
     });
   }
