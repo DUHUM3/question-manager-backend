@@ -122,7 +122,6 @@ router.patch('/:testId/settings', auth, adminAuth, async (req, res) => {
   }
 });
 
-// إضافة أسئلة لمستوى معين في الاختبار
 router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth, uploadAnyImages, async (req, res) => {
   try {
     const { testId, levelNumber } = req.params;
@@ -182,8 +181,26 @@ router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth, uploadAny
       });
     }
 
-    // التحقق من صحة الأسئلة
-    for (const question of questionsData) {
+    // تنظيم الملفات المرفوعة
+    const uploadedFiles = req.files || [];
+    const filesMap = new Map();
+
+    // تجميع الملفات حسب أسمائها
+    uploadedFiles.forEach(file => {
+      const fieldName = file.fieldname;
+      if (!filesMap.has(fieldName)) {
+        filesMap.set(fieldName, []);
+      }
+      filesMap.get(fieldName).push(file);
+    });
+
+    // التحقق من صحة الأسئلة وتجهيزها
+    const questionsToCreate = [];
+
+    for (let i = 0; i < questionsData.length; i++) {
+      const question = questionsData[i];
+      const questionIndex = i;
+      
       if (!question.options || !Array.isArray(question.options) || question.options.length < 4) {
         return res.status(400).json({
           success: false,
@@ -197,35 +214,44 @@ router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth, uploadAny
           message: `الإجابة الصحيحة "${question.correctAnswer}" غير موجودة في الخيارات`
         });
       }
-    }
 
-    // معالجة الأسئلة والصور
-    const uploadedFiles = req.files || [];
-    let fileIndex = 0;
-    const questionsToCreate = [];
-
-    for (const question of questionsData) {
       const questionData = { ...question };
-      
+
       if (question.questionType === 'image-options') {
-        // نتحقق من وجود 4 صور للسؤال
-        const remainingFiles = uploadedFiles.length - fileIndex;
-        if (remainingFiles < 4) {
+        // البحث عن صور الخيارات لهذا السؤال
+        const optionImagesKey = `optionImages_${questionIndex}`;
+        const optionImages = filesMap.get(optionImagesKey) || [];
+        
+        if (optionImages.length < 4) {
           return res.status(400).json({
             success: false,
-            message: `لا توجد صور كافية. تحتاج 4 صور للسؤال "${question.questionText}"`
+            message: `لا توجد صور كافية للخيارات. تحتاج 4 صور للسؤال "${question.questionText}"`
           });
         }
 
-        // نأخذ 4 صور للسؤال الحالي
-        questionData.optionsImages = [];
-        for (let i = 0; i < 4; i++) {
-          questionData.optionsImages.push(uploadedFiles[fileIndex].path);
-          fileIndex++;
+        questionData.optionsImages = optionImages.slice(0, 4).map(file => file.path);
+        questionData.questionImage = null;
+
+      } else if (question.questionType === 'image-question') {
+        // البحث عن صورة السؤال
+        const questionImageKey = `questionImage_${questionIndex}`;
+        const questionImages = filesMap.get(questionImageKey) || [];
+        
+        if (questionImages.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: `لا توجد صورة للسؤال "${question.questionText}"`
+          });
         }
+
+        questionData.questionImage = questionImages[0].path;
+        questionData.optionsImages = [];
+
       } else {
+        // النوع الافتراضي: نص فقط
         questionData.questionType = 'text-only';
         questionData.optionsImages = [];
+        questionData.questionImage = null;
       }
 
       questionsToCreate.push(questionData);
@@ -242,7 +268,8 @@ router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth, uploadAny
         testId: test._id,
         points: question.points || 1,
         questionType: question.questionType,
-        optionsImages: question.optionsImages
+        optionsImages: question.optionsImages,
+        questionImage: question.questionImage
       }))
     );
 

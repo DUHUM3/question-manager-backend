@@ -16,6 +16,10 @@ const ratingSchema = new mongoose.Schema({
   username: {
     type: String,
     required: true
+  },
+  isVisible: {
+    type: Boolean,
+    default: true // القيمة الافتراضية أن التعليق ظاهر
   }
 }, {
   timestamps: true

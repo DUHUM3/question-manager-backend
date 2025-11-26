@@ -30,15 +30,19 @@ const questionSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
-  // الحقول الجديدة
+  // الحقول المحدثة
   questionType: {
     type: String,
-    enum: ['text-only', 'image-options'],
+    enum: ['text-only', 'image-options', 'image-question'], // أضفنا النوع الجديد
     default: 'text-only'
   },
   optionsImages: [{
     type: String // مسارات صور الخيارات
-  }]
+  }],
+  questionImage: { // حقل جديد لصورة السؤال
+    type: String,
+    default: null
+  }
 }, { 
   timestamps: true 
 });
