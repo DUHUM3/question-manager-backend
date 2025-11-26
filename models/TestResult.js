@@ -7,23 +7,20 @@ const testResultSchema = new mongoose.Schema({
     required: true
   },
   testId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Test',
+    type: String,
     required: true
   },
-  currentLevel: {
-    type: Number,
-    default: 1
-  },
-  completed: {
-    type: Boolean,
-    default: false
+  testTitle: {
+    type: String,
+    required: true
   },
   score: {
     type: Number,
-    default: 0
+    required: true,
+    min: 0,
+    max: 100
   },
-  maxScore: {
+  correctAnswers: {
     type: Number,
     required: true
   },
@@ -31,31 +28,82 @@ const testResultSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  correctAnswers: {
+  wrongAnswers: {
+    type: Number,
+    required: true
+  },
+  unansweredQuestions: {
     type: Number,
     default: 0
   },
-  attempts: {
-    type: Number,
-    default: 1
-  },
-  hintsUsed: {
-    type: Number,
-    default: 0
-  },
-  className: { // حفظ اسم الفصل للعرض
+  duration: {
     type: String,
-    default: 'عام'
+    required: true
   },
-  lastAttemptDate: {
+  totalTimeSeconds: {
+    type: Number,
+    required: true
+  },
+  levelResults: [{
+    name: String,
+    totalQuestions: Number,
+    correctAnswers: Number,
+    wrongAnswers: Number,
+    score: Number
+  }],
+  timeAnalysis: {
+    averageTime: Number,
+    fastestAnswer: Number,
+    slowestAnswer: Number,
+    totalTime: Number,
+    timeUpAnswers: Number
+  },
+  strengthsAndWeaknesses: {
+    strengths: [{
+      name: String,
+      ratio: Number
+    }],
+    weaknesses: [{
+      name: String,
+      ratio: Number
+    }]
+  },
+  additionalStats: {
+    heartsUsed: Number,
+    hintsUsed: Number,
+    accuracy: Number,
+    completionRate: Number
+  },
+  userAnswers: [{
+    questionIndex: Number,
+    selectedIndex: Number,
+    isCorrect: Boolean,
+    timeSpent: Number,
+    timeUp: Boolean,
+    questionText: String,
+    correctAnswer: String,
+    userAnswer: String
+  }],
+  performanceLevel: {
+    type: String,
+    enum: ['ممتاز', 'متميز', 'جيد جداً', 'جيد', 'مقبول'],
+    required: true
+  },
+  date: {
     type: Date,
     default: Date.now
+  },
+  certificateGenerated: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true
 });
 
-// إضافة مؤشر مركب لتحسين أداء الاستعلام
-testResultSchema.index({ userId: 1, testId: 1 }, { unique: true });
+// إنشاء index للبحث السريع
+testResultSchema.index({ userId: 1, testId: 1 });
+testResultSchema.index({ createdAt: -1 });
+testResultSchema.index({ score: -1 });
 
 module.exports = mongoose.model('TestResult', testResultSchema);

@@ -28,6 +28,7 @@ app.use('/api/student/tests', require('./routes/studentTest'));
 app.use('/api/admin/reports', require('./routes/adminReports'));
 app.use('/api/dashboard', require ('./routes/dashboard'));
 app.use('/api/rating', require ('./routes/ratings') );
+app.use('/api/result',require('./routes/testResults'));
 
 // route أساسي للتحقق
 app.get('/', (req, res) => {
