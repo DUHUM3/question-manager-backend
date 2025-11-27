@@ -43,6 +43,13 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'حدث خطأ في الخادم', error: err.message });
 });
 
+// // الاتصال بقاعدة البيانات
+// mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/exam-management', {
+//   useNewUrlParser: true,
+//   useUnifiedTopology: true,
+// })
+// .then(() => console.log('Connected to MongoDB successfully'))
+// .catch(err => console.error('Failed to connect to MongoDB:', err));
 // الاتصال بقاعدة البيانات
 const connectDB = async () => {
   try {
