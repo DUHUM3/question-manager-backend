@@ -2,41 +2,9 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const { auth, adminAuth } = require('../middleware/auth');
+const { auth , superAdminAuth } = require('../middleware/auth');
 
 const router = express.Router();
-// 🔹 روت حذف الأدمن (يحتاج صلاحية أدمن)
-// 🔹 روت حذف الأدمن بدون أي حماية وبدون استخدام req.user
-router.delete('/admin/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // جلب الأدمن
-    const adminToDelete = await User.findOne({ _id: id, role: 'admin' });
-
-    if (!adminToDelete) {
-      return res.status(404).json({ message: 'الأدمن غير موجود' });
-    }
-
-    // حذف الأدمن
-    await User.findByIdAndDelete(id);
-
-    res.json({
-      message: 'تم حذف الأدمن بنجاح',
-      deletedAdmin: {
-        id: adminToDelete._id,
-        name: adminToDelete.name,
-        email: adminToDelete.email
-      }
-    });
-
-  } catch (error) {
-    res.status(500).json({ 
-      message: 'خطأ في الخادم أثناء حذف الأدمن', 
-      error: error.message 
-    });
-  }
-});
 
 // 🔹 روت التحقق من اسم المستخدم
 router.get('/check-username/:username', async (req, res) => {
@@ -190,7 +158,7 @@ router.post('/register', async (req, res) => {
 });
 
 // 🔹 إنشاء حساب أدمن
-router.post('/create-admin', async (req, res) => {
+router.post('/create-admin', superAdminAuth, async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
@@ -213,7 +181,7 @@ router.post('/create-admin', async (req, res) => {
     // التحقق من وجود الأدمن مسبقاً
     const existingAdmin = await User.findOne({ 
       email: cleanEmail,
-      role: 'admin'
+      role: { $in: ['admin', 'superadmin'] }
     });
     
     if (existingAdmin) {
@@ -233,16 +201,14 @@ router.post('/create-admin', async (req, res) => {
 
     await admin.save();
 
-    const payload = { userId: admin.id };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '3d' });
-
     res.status(201).json({
-      token,
-      user: {
+      message: 'تم إنشاء الأدمن بنجاح',
+      admin: {
         id: admin.id,
         name: admin.name,
         email: admin.email,
-        role: admin.role
+        role: admin.role,
+        createdAt: admin.createdAt
       }
     });
   } catch (error) {
@@ -260,6 +226,7 @@ router.post('/create-admin', async (req, res) => {
     });
   }
 });
+
 
 // 🔹 تسجيل دخول الإدارة
 router.post('/admin/login', async (req, res) => {
@@ -445,13 +412,13 @@ router.put('/profile', auth, async (req, res) => {
 
 
 // 🔹 روت واحد لجلب جميع الأدمن (يحتاج صلاحية أدمن)
-router.get('/admins', async (req, res) => {
+router.get('/admins', superAdminAuth, async (req, res) => {
   try {
-    // جلب جميع المستخدمين بدور "admin" مع استبعاد كلمة السر
+    // جلب جميع الأدمن (بدون السوبر أدمن)
     const admins = await User.find(
       { role: 'admin' },
-      { password: 0 } // استبعاد حقل كلمة السر من النتائج
-    ).sort({ createdAt: -1 }); // ترتيب تنازلي حسب تاريخ الإنشاء
+      { password: 0 }
+    ).sort({ createdAt: -1 });
 
     res.json({
       success: true,
@@ -471,6 +438,39 @@ router.get('/admins', async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: 'خطأ في الخادم أثناء جلب قائمة الأدمن', 
+      error: error.message 
+    });
+  }
+});
+
+// 🔹 روت حذف الأدمن (للسوبر أدمن فقط)
+router.delete('/admin/:id', superAdminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // منع حذف السوبر أدمن
+    const adminToDelete = await User.findOne({ _id: id, role: 'admin' });
+
+    if (!adminToDelete) {
+      return res.status(404).json({ 
+        message: 'الأدمن غير موجود أو لا يمكن حذف سوبر أدمن' 
+      });
+    }
+
+    await User.findByIdAndDelete(id);
+
+    res.json({
+      message: 'تم حذف الأدمن بنجاح',
+      deletedAdmin: {
+        id: adminToDelete._id,
+        name: adminToDelete.name,
+        email: adminToDelete.email
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({ 
+      message: 'خطأ في الخادم أثناء حذف الأدمن', 
       error: error.message 
     });
   }

@@ -30,7 +30,6 @@
 //   next();
 // };
 
-// module.exports = { auth, adminAuth };
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
@@ -59,15 +58,13 @@ const auth = async (req, res, next) => {
 
 const adminAuth = async (req, res, next) => {
   try {
-    // أولاً نتحقق من المصادقة الأساسية
     await auth(req, res, () => {});
     
-    // ثم نتحقق من دور المستخدم
     if (!req.user) {
       return res.status(401).json({ message: 'المستخدم غير معروف' });
     }
     
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
       return res.status(403).json({ message: 'الوصول مرفوض. للإدارة فقط' });
     }
     
@@ -78,4 +75,23 @@ const adminAuth = async (req, res, next) => {
   }
 };
 
-module.exports = { auth, adminAuth };
+const superAdminAuth = async (req, res, next) => {
+  try {
+    await auth(req, res, () => {});
+    
+    if (!req.user) {
+      return res.status(401).json({ message: 'المستخدم غير معروف' });
+    }
+    
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({ message: 'الوصول مرفوض. لسوبر أدمن فقط' });
+    }
+    
+    next();
+  } catch (error) {
+    console.error('SuperAdmin auth error:', error);
+    res.status(401).json({ message: 'غير مصرح' });
+  }
+};
+
+module.exports = { auth, adminAuth, superAdminAuth };
