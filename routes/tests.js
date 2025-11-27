@@ -2,7 +2,7 @@ const express = require('express');
 const Test = require('../models/Test');
 const Question = require('../models/Question');
 const { Class } = require('../models/Class');
-const { auth, adminAuth } = require('../middleware/auth');
+const { auth, adminAuth , superAdminAuth } = require('../middleware/auth');
 const { uploadAnyImages } = require('../middleware/upload');
 
 const router = express.Router();
@@ -19,7 +19,7 @@ const router = express.Router();
 
 // إنشاء اختبار جديد (الإدارة فقط)
 // إنشاء اختبار جديد (الإدارة فقط)
-router.post('/', auth, adminAuth, async (req, res) => {
+router.post('/', auth, adminAuth , superAdminAuth, async (req, res) => {
   try {
     const { title, description, classId, levels, heartsPerAttempt, hintsPerAttempt, isPublic } = req.body;
 
@@ -81,7 +81,7 @@ router.post('/', auth, adminAuth, async (req, res) => {
 });
 
 // تحديث إعدادات الاختبار including isPublic
-router.patch('/:testId/settings', auth, adminAuth, async (req, res) => {
+router.patch('/:testId/settings', auth, adminAuth , superAdminAuth, async (req, res) => {
   try {
     const { testId } = req.params;
     const { heartsPerAttempt, hintsPerAttempt, isPublic } = req.body;
@@ -122,7 +122,7 @@ router.patch('/:testId/settings', auth, adminAuth, async (req, res) => {
   }
 });
 
-router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth, uploadAnyImages, async (req, res) => {
+router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth , superAdminAuth, uploadAnyImages, async (req, res) => {
   try {
     const { testId, levelNumber } = req.params;
     const { questions } = req.body;
@@ -301,7 +301,7 @@ router.post('/:testId/levels/:levelNumber/questions', auth, adminAuth, uploadAny
 });
 
 // الحصول على جميع اختبارات الأدمن
-router.get('/admin', auth, adminAuth, async (req, res) => {
+router.get('/admin', auth, adminAuth , superAdminAuth, async (req, res) => {
   try {
     const tests = await Test.find({ adminId: req.user.id })
       .populate('classId', 'name')
@@ -318,7 +318,7 @@ router.get('/admin', auth, adminAuth, async (req, res) => {
 });
 
 // الحصول على اختبار معين مع أسئلته
-router.get('/:testId', auth, adminAuth, async (req, res) => {
+router.get('/:testId', auth, adminAuth , superAdminAuth, async (req, res) => {
   try {
     const { testId } = req.params;
 
@@ -353,7 +353,7 @@ router.get('/:testId', auth, adminAuth, async (req, res) => {
 });
 
 // الحصول على اختبارات فصل معين
-router.get('/class/:classId', auth, adminAuth, async (req, res) => {
+router.get('/class/:classId', auth, adminAuth , superAdminAuth, async (req, res) => {
   try {
     const { classId } = req.params;
 
@@ -375,7 +375,7 @@ router.get('/class/:classId', auth, adminAuth, async (req, res) => {
 });
 
 // تحديث حالة الاختبار (تفعيل/تعطيل)
-router.patch('/:testId/status', auth, adminAuth, async (req, res) => {
+router.patch('/:testId/status', auth, adminAuth , superAdminAuth, async (req, res) => {
   try {
     const { testId } = req.params;
     const { isActive } = req.body;
@@ -404,7 +404,7 @@ router.patch('/:testId/status', auth, adminAuth, async (req, res) => {
 });
 
 // تحديث إعدادات القلوب والمساعدات
-router.patch('/:testId/settings', auth, adminAuth, async (req, res) => {
+router.patch('/:testId/settings', auth, adminAuth , superAdminAuth, async (req, res) => {
   try {
     const { testId } = req.params;
     const { heartsPerAttempt, hintsPerAttempt } = req.body;
@@ -443,7 +443,7 @@ router.patch('/:testId/settings', auth, adminAuth, async (req, res) => {
 });
 
 // حذف اختبار وجميع الأسئلة والمستويات المرتبطة به
-router.delete('/:testId', auth, adminAuth, async (req, res) => {
+router.delete('/:testId', auth, adminAuth , superAdminAuth, async (req, res) => {
   try {
     const { testId } = req.params;
 

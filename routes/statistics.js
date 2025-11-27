@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Statistics = require('../models/Statistics');
-const {adminAuth} = require('../middleware/auth');
+const {adminAuth , superAdminAuth} = require('../middleware/auth');
 
 // 🔹 الحصول على الإحصائيات النشطة
 router.get('/', async (req, res) => {
@@ -41,7 +41,7 @@ router.get('/', async (req, res) => {
 });
 
 // 🔹 إنشاء إحصائيات جديدة 
-router.post('/', adminAuth, async (req, res) => {
+router.post('/', adminAuth , superAdminAuth, async (req, res) => {
   try {
     const {
       activeStudents,
@@ -110,7 +110,7 @@ router.post('/', adminAuth, async (req, res) => {
 });
 
 // 🔹 تحديث الإحصائيات (للمستخدمين المسجلين)
-router.put('/:id', adminAuth, async (req, res) => {
+router.put('/:id', adminAuth , superAdminAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -176,7 +176,7 @@ router.put('/:id', adminAuth, async (req, res) => {
 });
 
 // 🔹 الحصول على جميع الإحصائيات (للمسؤولين)
-router.get('/all', adminAuth, async (req, res) => {
+router.get('/all', adminAuth , superAdminAuth, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -224,7 +224,7 @@ router.get('/all', adminAuth, async (req, res) => {
 });
 
 // 🔹 تفعيل/تعطيل الإحصائيات (للمسؤولين)
-router.patch('/:id/toggle', adminAuth, async (req, res) => {
+router.patch('/:id/toggle', adminAuth , superAdminAuth, async (req, res) => {
   try {
     const { id } = req.params;
 

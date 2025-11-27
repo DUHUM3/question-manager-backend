@@ -2,11 +2,11 @@ const express = require('express');
 const { Class, StudentClass } = require('../models/Class');
 const Test = require('../models/Test'); // تأكد من استيراد موديل Test
 const Question = require('../models/Question'); // تأكد من استيراد موديل Question
-const { auth, adminAuth } = require('../middleware/auth');
+const { auth, adminAuth , superAdminAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.delete('/:classId', auth, adminAuth, async (req, res) => {
+router.delete('/:classId', auth, adminAuth , superAdminAuth, async (req, res) => {
   try {
     const { classId } = req.params;
 
@@ -77,7 +77,7 @@ router.delete('/:classId', auth, adminAuth, async (req, res) => {
 });
 
 // إنشاء فصل جديد (الإدارة فقط)
-router.post('/', auth, adminAuth, async (req, res) => {
+router.post('/', auth, adminAuth , superAdminAuth, async (req, res) => {
   try {
     const { name, description } = req.body;
 
@@ -108,7 +108,7 @@ router.post('/', auth, adminAuth, async (req, res) => {
 });
 
 // إضافة طالب للفصل
-router.post('/:classId/students', auth, adminAuth, async (req, res) => {
+router.post('/:classId/students', auth, adminAuth , superAdminAuth, async (req, res) => {
   try {
     const { classId } = req.params;
     const { studentId } = req.body;
@@ -160,7 +160,7 @@ router.post('/:classId/students', auth, adminAuth, async (req, res) => {
 });
 
 // الحصول على فصول الأدمن
-router.get('/admin', auth, adminAuth, async (req, res) => {
+router.get('/admin', auth, adminAuth , superAdminAuth, async (req, res) => {
   try {
     const classes = await Class.find({ adminId: req.user.id })
       .populate('students.studentId', 'name email')
