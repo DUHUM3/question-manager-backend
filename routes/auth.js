@@ -229,6 +229,7 @@ router.post('/create-admin', superAdminAuth, async (req, res) => {
 
 
 // 🔹 تسجيل دخول الإدارة
+// 🔹 تسجيل دخول الإدارة (للسوبر أدمن والأدمن العادي)
 router.post('/admin/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -239,9 +240,10 @@ router.post('/admin/login', async (req, res) => {
       });
     }
 
+    // البحث عن أدمن أو سوبر أدمن
     const admin = await User.findOne({ 
       email: email.toLowerCase().trim(), 
-      role: 'admin' 
+      role: { $in: ['admin', 'superadmin'] } // البحث في كلا الدورين
     });
     
     if (!admin) {
@@ -254,7 +256,7 @@ router.post('/admin/login', async (req, res) => {
     }
 
     const payload = { userId: admin.id };
-    const token = jwt.sign(payload, process.env.JWT_SECRET,{ expiresIn: '3d' });
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '3d' });
 
     res.json({
       token,
