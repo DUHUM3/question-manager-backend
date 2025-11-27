@@ -414,7 +414,7 @@ router.put('/profile', auth, async (req, res) => {
 
 
 // 🔹 روت واحد لجلب جميع الأدمن (يحتاج صلاحية أدمن)
-router.get('/admins', superAdminAuth, async (req, res) => {
+router.get('/admins', async (req, res) => {
   try {
     // جلب جميع الأدمن (بدون السوبر أدمن)
     const admins = await User.find(
