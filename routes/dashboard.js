@@ -3,12 +3,12 @@ const User = require('../models/User');
 const Test = require('../models/Test');
 const Question = require('../models/Question');
 const { Class } = require('../models/Class');
-const { auth, adminAuth , superAdminAuth } = require('../middleware/auth');
+const { auth, adminAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
 // الحصول على إحصائيات النظام الأساسية (الإدارة فقط)
-router.get('/admin/statistics', auth, adminAuth , superAdminAuth, async (req, res) => {
+router.get('/admin/statistics', auth, adminAuth, async (req, res) => {
   try {
     // إحصائيات الاختبارات مع بيانات الصف
     const totalTests = await Test.countDocuments({ adminId: req.user.id });
@@ -132,7 +132,7 @@ router.get('/admin/statistics', auth, adminAuth , superAdminAuth, async (req, re
 
 
 // إحصائيات سريعة للوحة التحكم
-router.get('/admin/dashboard', auth, adminAuth , superAdminAuth, async (req, res) => {
+router.get('/admin/dashboard', auth, adminAuth, async (req, res) => {
   try {
     const [
       totalUsers,

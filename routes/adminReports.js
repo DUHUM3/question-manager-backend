@@ -2,12 +2,12 @@ const express = require('express');
 const TestResult = require('../models/TestResult');
 const Test = require('../models/Test');
 const User = require('../models/User');
-const { auth, adminAuth , superAdminAuth } = require('../middleware/auth');
+const { auth, adminAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
 // الحصول على نتائج اختبار معين
-router.get('/test/:testId', auth, adminAuth , superAdminAuth, async (req, res) => {
+router.get('/test/:testId', auth, adminAuth, async (req, res) => {
   try {
     const { testId } = req.params;
     
@@ -82,7 +82,7 @@ router.get('/test/:testId', auth, adminAuth , superAdminAuth, async (req, res) =
 });
 
 // الحصول على نتائج طالب معين في جميع اختبارات المدرس
-router.get('/student/:studentId', auth, adminAuth , superAdminAuth, async (req, res) => {
+router.get('/student/:studentId', auth, adminAuth, async (req, res) => {
   try {
     const { studentId } = req.params;
     
@@ -157,7 +157,7 @@ router.get('/student/:studentId', auth, adminAuth , superAdminAuth, async (req, 
 });
 
 // الحصول على إحصائيات عامة لجميع الاختبارات
-router.get('/statistics', auth, adminAuth , superAdminAuth, async (req, res) => {
+router.get('/statistics', auth, adminAuth, async (req, res) => {
   try {
     // الحصول على اختبارات المدرس
     const tests = await Test.find({ adminId: req.user.id });
