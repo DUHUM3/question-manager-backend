@@ -56,9 +56,16 @@ router.get('/available-with-questions', async (req, res) => {
         // دالة لتحويل المسار إلى رابط URL كامل
         const getImageUrl = (imagePath) => {
           if (!imagePath) return null;
-          // تحويل المسار إلى رابط URL
+          
+          // إذا كان المسار يحتوي بالفعل على رابط كامل (يبدأ بـ http أو https)
+          if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+            console.log('Image is already a full URL:', imagePath);
+            return imagePath;
+          }
+          
+          // تحويل المسار المحلي إلى رابط URL كامل
           const url = `${req.protocol}://${req.get('host')}/${imagePath.replace(/\\/g, '/')}`;
-          console.log('Converted path to URL:', imagePath, '->', url);
+          console.log('Converted local path to URL:', imagePath, '->', url);
           return url;
         };
 
@@ -134,6 +141,9 @@ router.get('/available-with-questions', async (req, res) => {
 
         console.log('Final questions with images:');
         result.allQuestions.forEach(q => {
+          if (q.questionImage) {
+            console.log(`Question ${q.id} questionImage:`, q.questionImage);
+          }
           if (q.optionsImages && q.optionsImages.length > 0) {
             console.log(`Question ${q.id} has optionsImages:`, q.optionsImages);
           }
