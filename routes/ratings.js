@@ -194,36 +194,36 @@ router.get('/admin/all-ratings', async (req, res) => {
 });
 
 // 🔹 الحصول على تقييم المستخدم الحالي
-router.get('/my-rating', auth, async (req, res) => {
-  try {
-    const rating = await Rating.findOne({ 
-      createdBy: req.user.id 
-    }).select('description createdAt isVisible'); // جديد
+// router.get('/my-rating', auth, async (req, res) => {
+//   try {
+//     const rating = await Rating.findOne({ 
+//       createdBy: req.user.id 
+//     }).select('description createdAt isVisible'); // جديد
 
-    if (!rating) {
-      return res.json({ 
-        hasRated: false,
-        message: 'لم تقم بالتقييم بعد' 
-      });
-    }
+//     if (!rating) {
+//       return res.json({ 
+//         hasRated: false,
+//         message: 'لم تقم بالتقييم بعد' 
+//       });
+//     }
 
-    res.json({
-      hasRated: true,
-      rating: {
-        id: rating._id,
-        description: rating.description,
-        isVisible: rating.isVisible, // جديد
-        createdAt: rating.createdAt
-      }
-    });
-  } catch (error) {
-    console.error('Get my rating error:', error);
-    res.status(500).json({ 
-      message: 'خطأ في جلب تقييمك', 
-      error: error.message 
-    });
-  }
-});
+//     res.json({
+//       hasRated: true,
+//       rating: {
+//         id: rating._id,
+//         description: rating.description,
+//         isVisible: rating.isVisible, // جديد
+//         createdAt: rating.createdAt
+//       }
+//     });
+//   } catch (error) {
+//     console.error('Get my rating error:', error);
+//     res.status(500).json({ 
+//       message: 'خطأ في جلب تقييمك', 
+//       error: error.message 
+//     });
+//   }
+// });
 
 // 🔹 تحديث حالة العرض (إظهار/إخفاء) - للمشرفين
 router.patch('/admin/:id/visibility', async (req, res) => {
@@ -291,62 +291,6 @@ router.patch('/admin/:id/visibility', async (req, res) => {
   }
 });
 
-// 🔹 تحديث التقييم
-router.put('/', auth, async (req, res) => {
-  try {
-    const { description } = req.body;
-
-    if (!description) {
-      return res.status(400).json({ 
-        message: 'وصف التقييم مطلوب' 
-      });
-    }
-
-    if (description.length < 10) {
-      return res.status(400).json({ 
-        message: 'الوصف يجب أن يكون至少 10 أحرف' 
-      });
-    }
-
-    if (description.length > 500) {
-      return res.status(400).json({ 
-        message: 'الوصف يجب ألا يتجاوز 500 حرف' 
-      });
-    }
-
-    const updatedRating = await Rating.findOneAndUpdate(
-      { createdBy: req.user.id },
-      { 
-        description: description.trim(),
-        username: req.user.username || req.user.name
-      },
-      { new: true, runValidators: true }
-    );
-
-    if (!updatedRating) {
-      return res.status(404).json({ 
-        message: 'لم تقم بالتقييم مسبقاً' 
-      });
-    }
-
-    res.json({
-      message: 'تم تحديث التقييم بنجاح',
-      rating: {
-        id: updatedRating._id,
-        description: updatedRating.description,
-        username: updatedRating.username,
-        isVisible: updatedRating.isVisible, // جديد
-        createdAt: updatedRating.createdAt
-      }
-    });
-  } catch (error) {
-    console.error('Update rating error:', error);
-    res.status(500).json({ 
-      message: 'خطأ في تحديث التقييم', 
-      error: error.message 
-    });
-  }
-});
 
 // 🔹 حذف التقييم
 router.delete('/', auth, async (req, res) => {

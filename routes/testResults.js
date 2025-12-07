@@ -335,4 +335,156 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
+// @route   GET /api/test-results/leaderboard/top-students
+// @desc    الحصول على أفضل 7 طلاب بناءً على متوسط نتائجهم
+// @access  Public (يمكن جعله خاص إذا أردت)
+router.get('/leaderboard/top-students', async (req, res) => {
+  try {
+    const topStudents = await TestResult.aggregate([
+      {
+        $group: {
+          _id: "$userId",
+          // حساب متوسط النتائج لكل طالب
+          averageScore: { $avg: "$score" },
+          // عدد الاختبارات التي أجراها الطالب
+          totalTests: { $sum: 1 },
+          // أفضل نتيجة حصل عليها
+          bestScore: { $max: "$score" },
+          // أسوأ نتيجة حصل عليها
+          worstScore: { $min: "$score" },
+          // إجمالي الإجابات الصحيحة
+          totalCorrectAnswers: { $sum: "$correctAnswers" },
+          // إجمالي الأسئلة
+          totalQuestionsAttempted: { $sum: "$totalQuestions" },
+          // آخر اختبار قام به
+          lastTestDate: { $max: "$createdAt" },
+          // أول اختبار قام به
+          firstTestDate: { $min: "$createdAt" }
+        }
+      },
+      {
+        // فرز حسب متوسط النتائج من الأعلى للأدنى
+        $sort: { averageScore: -1 }
+      },
+      {
+        // تحديد أعلى 7 طلاب فقط
+        $limit: 7
+      },
+      {
+        $lookup: {
+          from: "users", // اسم collection الخاص بالمستخدمين
+          localField: "_id",
+          foreignField: "_id",
+          as: "userInfo"
+        }
+      },
+      {
+        $unwind: {
+          path: "$userInfo",
+          preserveNullAndEmptyArrays: true // إذا لم توجد معلومات المستخدم
+        }
+      },
+      {
+        $project: {
+          userId: "$_id",
+          _id: 0,
+          averageScore: { $round: ["$averageScore", 2] }, // تقريب لرقمين عشريين
+          totalTests: 1,
+          bestScore: 1,
+          worstScore: 1,
+          // حساب دقة الطالب (نسبة الإجابات الصحيحة)
+          accuracy: {
+            $cond: {
+              if: { $gt: ["$totalQuestionsAttempted", 0] },
+              then: {
+                $round: [
+                  {
+                    $multiply: [
+                      { $divide: ["$totalCorrectAnswers", "$totalQuestionsAttempted"] },
+                      100
+                    ]
+                  },
+                  2
+                ]
+              },
+              else: 0
+            }
+          },
+          // حساب اتساق الأداء (الفرق بين أفضل وأسوأ نتيجة)
+          performanceConsistency: {
+            $subtract: ["$bestScore", "$worstScore"]
+          },
+          userInfo: {
+            name: { $ifNull: ["$userInfo.name", "مستخدم مجهول"] },
+            username: { $ifNull: ["$userInfo.username", ""] },
+            school: { $ifNull: ["$userInfo.school", ""] },
+            class: { $ifNull: ["$userInfo.class", ""] },
+
+            // يمكن إضافة المزيد من الحقول حسب احتياجك
+          },
+          firstTestDate: 1,
+          lastTestDate: 1,
+          // حساب عدد الأيام منذ أول اختبار (لقياس الخبرة)
+          experienceDays: {
+            $cond: {
+              if: { $and: ["$firstTestDate", "$lastTestDate"] },
+              then: {
+                $ceil: {
+                  $divide: [
+                    { $subtract: ["$lastTestDate", "$firstTestDate"] },
+                    1000 * 60 * 60 * 24 // تحويل من مللي ثانية إلى أيام
+                  ]
+                }
+              },
+              else: 0
+            }
+          }
+        }
+      },
+      {
+        // إعادة الترتيب بناءً على معايير مركبة (متوسط النتائج + الدقة)
+        $sort: {
+          averageScore: -1,
+          accuracy: -1,
+          totalTests: -1
+        }
+      }
+    ]);
+
+    // إذا لم تكن هناك نتائج
+    if (topStudents.length === 0) {
+      return res.json({
+        success: true,
+        message: 'لا توجد نتائج للطلاب بعد',
+        data: []
+      });
+    }
+
+    // إضافة المرتبة لكل طالب
+    const rankedStudents = topStudents.map((student, index) => ({
+      rank: index + 1,
+      ...student
+    }));
+
+    res.json({
+      success: true,
+      message: 'تم جلب أفضل 7 طلاب بنجاح',
+      data: {
+        students: rankedStudents,
+        generatedAt: new Date(),
+        totalStudentsInSystem: await TestResult.distinct("userId").countDocuments(),
+        criteria: "متوسط النتائج في جميع الاختبارات"
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching top students:', error);
+    res.status(500).json({
+      success: false,
+      message: 'حدث خطأ في جلب قائمة أفضل الطلاب',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;

@@ -182,27 +182,4 @@ router.get('/admin', auth, adminAuth, async (req, res) => {
   }
 });
 
-// الحصول على فصول الطالب
-router.get('/student', auth, async (req, res) => {
-  try {
-    const studentClasses = await StudentClass.find({ studentId: req.user.id })
-      .populate('classId', 'name description')
-      .sort({ enrolledAt: -1 });
-
-    const formattedClasses = studentClasses.map(sc => ({
-      id: sc.classId._id,
-      name: sc.classId.name,
-      description: sc.classId.description,
-      enrolledAt: sc.enrolledAt
-    }));
-
-    res.json({
-      classes: formattedClasses,
-      count: formattedClasses.length
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'خطأ في الخادم', error: error.message });
-  }
-});
-
 module.exports = router;
