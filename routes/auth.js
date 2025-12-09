@@ -84,13 +84,13 @@ router.post('/admin/forgot-password', async (req, res) => {
     }
 
     // التحقق من حالة الحساب
-    if (admin.status !== 'active') {
-      return res.status(403).json({ 
-        success: false,
-        message: "الحساب غير نشط. الرجاء التواصل مع الدعم الفني",
-        errorCode: "ACCOUNT_INACTIVE"
-      });
-    }
+    // if (admin.status !== 'active') {
+    //   return res.status(403).json({ 
+    //     success: false,
+    //     message: "الحساب غير نشط. الرجاء التواصل مع الدعم الفني",
+    //     errorCode: "ACCOUNT_INACTIVE"
+    //   });
+    // }
 
     // إنشاء توكن إعادة التعيين
     const token = jwt.sign(
