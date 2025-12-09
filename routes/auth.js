@@ -53,97 +53,40 @@ router.get('/check-username/:username', async (req, res) => {
   }
 });
 
-// مسار نسيان كلمة المرور
 router.post('/admin/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({ 
-        success: false,
-        message: "البريد الإلكتروني مطلوب",
-        errorCode: "EMAIL_REQUIRED"
-      });
+      return res.status(400).json({ message: "البريد الإلكتروني مطلوب" });
     }
 
-    // تنظيف البريد الإلكتروني
-    const cleanEmail = email.toLowerCase().trim();
-
-    // البحث عن المسؤول
     const admin = await User.findOne({ 
-      email: cleanEmail,
+      email: email.toLowerCase().trim(),
       role: { $in: ["admin", "superadmin"] }
     });
 
     if (!admin) {
-      return res.status(404).json({ 
-        success: false,
-        message: "لا يوجد حساب مرتبط بهذا البريد الإلكتروني",
-        errorCode: "USER_NOT_FOUND"
-      });
+      return res.status(404).json({ message: "لا يوجد حساب مرتبط بهذا البريد" });
     }
 
-    // التحقق من حالة الحساب
-    // if (admin.status !== 'active') {
-    //   return res.status(403).json({ 
-    //     success: false,
-    //     message: "الحساب غير نشط. الرجاء التواصل مع الدعم الفني",
-    //     errorCode: "ACCOUNT_INACTIVE"
-    //   });
-    // }
-
-    // إنشاء توكن إعادة التعيين
     const token = jwt.sign(
-      { 
-        userId: admin._id,
-        email: admin.email,
-        role: admin.role,
-        type: 'password_reset'
-      },
-      process.env.RESET_TOKEN_SECRET || process.env.JWT_SECRET,
+      { userId: admin.id },
+      process.env.RESET_TOKEN_SECRET,
       { expiresIn: "30m" }
     );
 
-    // إنشاء رابط إعادة التعيين
-    const resetLink = `${process.env.CLIENT_URL || 'http://localhost:3000'}/admin/reset-password?token=${token}`;
+    const resetLink = `${process.env.RESET_URL}/${token}`;
 
-    // إرسال الإيميل
-    await sendResetEmail(
-      admin.email,
-      resetLink,
-      admin.fullname || admin.username
-    );
-
-    // تسجيل النشاط
-    console.log('تم طلب إعادة تعيين كلمة المرور:', {
-      adminId: admin._id,
-      email: admin.email,
-      timestamp: new Date().toLocaleString('ar-SA'),
-      ip: req.ip
-    });
+    await sendResetEmail(admin.email, resetLink);
 
     res.json({
       success: true,
-      message: "تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني",
-      data: {
-        email: admin.email,
-        expiresIn: "30 دقيقة"
-      }
+      message: "تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني"
     });
 
   } catch (error) {
-    console.error('خطأ في طلب إعادة تعيين كلمة المرور:', {
-      error: error.message,
-      email: req.body.email,
-      timestamp: new Date().toLocaleString('ar-SA')
-    });
-    
-    res.status(500).json({ 
-      success: false,
-      message: "حدث خطأ أثناء معالجة طلبك",
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      errorCode: "SERVER_ERROR"
-    });
+    res.status(500).json({ message: "خطأ أثناء إرسال الرابط", error: error.message });
   }
 });
 
