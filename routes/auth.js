@@ -2,7 +2,8 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const { auth , superAdminAuth } = require('../middleware/auth');
+const { auth , superAdminAuth, adminAuth } = require('../middleware/auth');
+const { sendResetEmail, sendPasswordResetSuccessEmail  } = require('../utils/emailService');
 
 const router = express.Router();
 
@@ -51,6 +52,101 @@ router.get('/check-username/:username', async (req, res) => {
     });
   }
 });
+
+// مسار نسيان كلمة المرور
+router.post('/admin/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        success: false,
+        message: "البريد الإلكتروني مطلوب",
+        errorCode: "EMAIL_REQUIRED"
+      });
+    }
+
+    // تنظيف البريد الإلكتروني
+    const cleanEmail = email.toLowerCase().trim();
+
+    // البحث عن المسؤول
+    const admin = await User.findOne({ 
+      email: cleanEmail,
+      role: { $in: ["admin", "superadmin"] }
+    });
+
+    if (!admin) {
+      return res.status(404).json({ 
+        success: false,
+        message: "لا يوجد حساب مرتبط بهذا البريد الإلكتروني",
+        errorCode: "USER_NOT_FOUND"
+      });
+    }
+
+    // التحقق من حالة الحساب
+    if (admin.status !== 'active') {
+      return res.status(403).json({ 
+        success: false,
+        message: "الحساب غير نشط. الرجاء التواصل مع الدعم الفني",
+        errorCode: "ACCOUNT_INACTIVE"
+      });
+    }
+
+    // إنشاء توكن إعادة التعيين
+    const token = jwt.sign(
+      { 
+        userId: admin._id,
+        email: admin.email,
+        role: admin.role,
+        type: 'password_reset'
+      },
+      process.env.RESET_TOKEN_SECRET || process.env.JWT_SECRET,
+      { expiresIn: "30m" }
+    );
+
+    // إنشاء رابط إعادة التعيين
+    const resetLink = `${process.env.CLIENT_URL || 'http://localhost:3000'}/admin/reset-password?token=${token}`;
+
+    // إرسال الإيميل
+    await sendResetEmail(
+      admin.email,
+      resetLink,
+      admin.fullname || admin.username
+    );
+
+    // تسجيل النشاط
+    console.log('تم طلب إعادة تعيين كلمة المرور:', {
+      adminId: admin._id,
+      email: admin.email,
+      timestamp: new Date().toLocaleString('ar-SA'),
+      ip: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: "تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني",
+      data: {
+        email: admin.email,
+        expiresIn: "30 دقيقة"
+      }
+    });
+
+  } catch (error) {
+    console.error('خطأ في طلب إعادة تعيين كلمة المرور:', {
+      error: error.message,
+      email: req.body.email,
+      timestamp: new Date().toLocaleString('ar-SA')
+    });
+    
+    res.status(500).json({ 
+      success: false,
+      message: "حدث خطأ أثناء معالجة طلبك",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      errorCode: "SERVER_ERROR"
+    });
+  }
+});
+
 
 // 🔹 تسجيل مستخدم جديد (بدون إيميل)
 router.post('/register', async (req, res) => {
@@ -317,6 +413,45 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// 🔹 روت لفحص صلاحية التوكن (للتجربة فقط)
+router.get('/debug-token', async (req, res) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(400).json({ message: 'لا يوجد توكن' });
+    }
+
+    // فك التوكن دون التحقق (لرؤية البيانات)
+    const decoded = jwt.decode(token);
+    
+    // حساب الوقت المتبقي
+    const now = Math.floor(Date.now() / 1000);
+    const timeLeft = decoded.exp - now;
+    const daysLeft = Math.floor(timeLeft / (60 * 60 * 24));
+    const hoursLeft = Math.floor((timeLeft % (60 * 60 * 24)) / 3600);
+    
+    res.json({
+      tokenData: decoded,
+      expiresAt: new Date(decoded.exp * 1000),
+      timeLeft: {
+        seconds: timeLeft,
+        days: daysLeft,
+        hours: hoursLeft,
+        formatted: `${daysLeft} يوم و ${hoursLeft} ساعة`
+      },
+      createdAt: new Date(decoded.iat * 1000),
+      isValid: timeLeft > 0
+    });
+    
+  } catch (error) {
+    res.status(500).json({ 
+      message: 'خطأ في فحص التوكن',
+      error: error.message 
+    });
+  }
+});
+
 // الحصول على بيانات المستخدم الحالي
 router.get('/me', auth, async (req, res) => {
   const userData = {
@@ -411,10 +546,58 @@ router.put('/profile', auth, async (req, res) => {
 });
 
 
+// 🔹 روت لتغيير كلمة السر للأدمن العادي (أو السوبر)
+// يحتاج تسجيل دخول فقط
+router.put('/admin/change-password', adminAuth, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+
+    // التحقق من البيانات
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        message: 'الرجاء إدخال كلمة السر القديمة والجديدة'
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        message: 'كلمة السر الجديدة يجب أن تكون 6 أحرف على الأقل'
+      });
+    }
+
+    // جلب البيانات من المستخدم المسجّل
+    const admin = await User.findById(req.user.id);
+    if (!admin) {
+      return res.status(404).json({ message: 'المستخدم غير موجود' });
+    }
+
+    // التحقق من كلمة السر القديمة
+    const isMatch = await bcrypt.compare(oldPassword, admin.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'كلمة السر القديمة غير صحيحة' });
+    }
+
+    // تشفير كلمة السر الجديدة
+    const salt = await bcrypt.genSalt(10);
+    admin.password = await bcrypt.hash(newPassword, salt);
+
+    await admin.save();
+
+    res.json({
+      message: 'تم تغيير كلمة السر بنجاح'
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: 'خطأ في الخادم أثناء تغيير كلمة السر',
+      error: error.message
+    });
+  }
+});
 
 
 // 🔹 روت واحد لجلب جميع الأدمن (يحتاج صلاحية أدمن)
-router.get('/admins', superAdminAuth, async (req, res) => {
+router.get('/admins', adminAuth , async (req, res) => {
   try {
     // جلب جميع الأدمن (بدون السوبر أدمن)
     const admins = await User.find(

@@ -14,8 +14,8 @@ const initializeSuperAdmin = async () => {
     // إنشاء سوبر أدمن جديد
     const superAdminData = {
       name: 'Super Admin',
-      email: 'superadmin@system.com',
-      password: 'superadmin123', // يجب تغيير هذا في البيئة الإنتاجية
+      email: 'superadmin@nafspro.com',
+      password: 'Nafs@2025!Admin', // يجب تغيير هذا في البيئة الإنتاجية
       role: 'superadmin'
     };
 
