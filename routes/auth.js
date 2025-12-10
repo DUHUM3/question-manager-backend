@@ -3,7 +3,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { auth , superAdminAuth, adminAuth } = require('../middleware/auth');
-const transporter = require("../config/mailer");
 
 const router = express.Router();
 
@@ -52,38 +51,6 @@ router.get('/check-username/:username', async (req, res) => {
     });
   }
 });
-
-// ✅ إرسال رابط إعادة التعيين
-router.post("/admin/forgot-password", async (req, res) => {
-  const { email } = req.body;
-
-  const user = await User.findOne({ email });
-  if (!user) {
-    return res.status(404).json({ message: "الإيميل غير موجود" });
-  }
-
-  const token = jwt.sign(
-    { userId: user._id },
-    process.env.JWT_SECRET,
-    { expiresIn: "15m" }
-  );
-
-  const resetLink = `${process.env.BASE_URL}/reset-password/${token}`;
-
-  await transporter.sendMail({
-    from: process.env.EMAIL_USER,
-    to: email,
-    subject: "إعادة تعيين كلمة المرور",
-    html: `
-      <h3>إعادة تعيين كلمة المرور</h3>
-      <a href="${resetLink}">اضغط هنا لتغيير كلمة المرور</a>
-    `,
-  });
-
-  res.json({ message: "تم إرسال رابط إعادة التعيين" });
-});
-
-
 
 // 🔹 تسجيل مستخدم جديد (بدون إيميل)
 router.post('/register', async (req, res) => {
