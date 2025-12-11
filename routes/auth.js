@@ -451,7 +451,6 @@ router.put('/profile', auth, async (req, res) => {
  
 
 // 🔹 روت لتغيير كلمة السر للأدمن العادي (أو السوبر)
-// يحتاج تسجيل دخول فقط
 router.put('/admin/change-password', adminAuth, async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
