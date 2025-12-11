@@ -448,7 +448,7 @@ router.put('/profile', auth, async (req, res) => {
     res.status(500).json({ message: 'خطأ في الخادم', error: error.message });
   }
 });
-
+ 
 
 // 🔹 روت لتغيير كلمة السر للأدمن العادي (أو السوبر)
 // يحتاج تسجيل دخول فقط
