@@ -452,52 +452,52 @@ router.put('/profile', auth, async (req, res) => {
 
 // 🔹 روت لتغيير كلمة السر للأدمن العادي (أو السوبر)
 // يحتاج تسجيل دخول فقط
-router.put('/admin/change-password', adminAuth, async (req, res) => {
-  try {
-    const { oldPassword, newPassword } = req.body;
+// router.put('/admin/change-password', adminAuth, async (req, res) => {
+//   try {
+//     const { oldPassword, newPassword } = req.body;
 
-    // التحقق من البيانات
-    if (!oldPassword || !newPassword) {
-      return res.status(400).json({
-        message: 'الرجاء إدخال كلمة السر القديمة والجديدة'
-      });
-    }
+//     // التحقق من البيانات
+//     if (!oldPassword || !newPassword) {
+//       return res.status(400).json({
+//         message: 'الرجاء إدخال كلمة السر القديمة والجديدة'
+//       });
+//     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({
-        message: 'كلمة السر الجديدة يجب أن تكون 6 أحرف على الأقل'
-      });
-    }
+//     if (newPassword.length < 6) {
+//       return res.status(400).json({
+//         message: 'كلمة السر الجديدة يجب أن تكون 6 أحرف على الأقل'
+//       });
+//     }
 
-    // جلب البيانات من المستخدم المسجّل
-    const admin = await User.findById(req.user.id);
-    if (!admin) {
-      return res.status(404).json({ message: 'المستخدم غير موجود' });
-    }
+//     // جلب البيانات من المستخدم المسجّل
+//     const admin = await User.findById(req.user.id);
+//     if (!admin) {
+//       return res.status(404).json({ message: 'المستخدم غير موجود' });
+//     }
 
-    // التحقق من كلمة السر القديمة
-    const isMatch = await bcrypt.compare(oldPassword, admin.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'كلمة السر القديمة غير صحيحة' });
-    }
+//     // التحقق من كلمة السر القديمة
+//     const isMatch = await bcrypt.compare(oldPassword, admin.password);
+//     if (!isMatch) {
+//       return res.status(400).json({ message: 'كلمة السر القديمة غير صحيحة' });
+//     }
 
-    // تشفير كلمة السر الجديدة
-    const salt = await bcrypt.genSalt(10);
-    admin.password = await bcrypt.hash(newPassword, salt);
+//     // تشفير كلمة السر الجديدة
+//     const salt = await bcrypt.genSalt(10);
+//     admin.password = await bcrypt.hash(newPassword, salt);
 
-    await admin.save();
+//     await admin.save();
 
-    res.json({
-      message: 'تم تغيير كلمة السر بنجاح'
-    });
+//     res.json({
+//       message: 'تم تغيير كلمة السر بنجاح'
+//     });
 
-  } catch (error) {
-    res.status(500).json({
-      message: 'خطأ في الخادم أثناء تغيير كلمة السر',
-      error: error.message
-    });
-  }
-});
+//   } catch (error) {
+//     res.status(500).json({
+//       message: 'خطأ في الخادم أثناء تغيير كلمة السر',
+//       error: error.message
+//     });
+//   }
+// });
 
 
 // 🔹 روت واحد لجلب جميع الأدمن (يحتاج صلاحية أدمن)
